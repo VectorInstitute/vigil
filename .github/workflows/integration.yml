@@ -185,6 +185,12 @@ jobs:
           mount -t sysfs sysfs /sys
           mount -t devtmpfs devtmpfs /dev
 
+          # tracefs is required by cilium/ebpf for tracepoint attachment.
+          # Mount debugfs (which exposes tracing/ underneath) and tracefs directly.
+          mkdir -p /sys/kernel/debug /sys/kernel/tracing
+          mount -t debugfs debugfs /sys/kernel/debug  || true
+          mount -t tracefs tracefs /sys/kernel/tracing || true
+
           # Load 9p dependency chain in order: netfs → fscache → 9pnet → 9pnet_virtio → 9p
           # virtio/virtio_pci are built-in on Ubuntu generic, no insmod needed.
           for m in netfs fscache 9pnet 9pnet_virtio 9p; do
@@ -195,6 +201,9 @@ jobs:
           mount --bind /proc /host/proc
           mount --bind /sys  /host/sys
           mount --bind /dev  /host/dev
+          mkdir -p /host/sys/kernel/debug /host/sys/kernel/tracing
+          mount --bind /sys/kernel/debug   /host/sys/kernel/debug   || true
+          mount --bind /sys/kernel/tracing /host/sys/kernel/tracing || true
 
           chroot /host ${WORKSPACE}/run-e2e-in-vm.sh
           RC=\$?
