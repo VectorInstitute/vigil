@@ -130,28 +130,39 @@ jobs:
           # Strategy: boot a tiny busybox initramfs that:
           #   1. loads virtio + 9p kernel modules (they are not built-in on Ubuntu)
           #   2. mounts the host filesystem via virtio-9p at /newroot
-          #   3. pivot_root into it — this changes the VFS root so bpf_d_path
-          #      returns real paths (/etc/passwd) not mount-prefixed ones
-          #      (/host/etc/passwd) which would break BPF map lookups
-          #   4. runs the e2e test, writes exit code, powers off
+          #   3. switch_root into it — uses mount --move to change the VFS root so
+          #      bpf_d_path returns /etc/passwd not /newroot/etc/passwd, which is
+          #      required for BPF map lookups to match the profile denied_paths
+          #   4. the test runner (now PID 1) runs the e2e test, writes exit code,
+          #      and powers off via SysRq (no systemd available)
           GOROOT=$(go env GOROOT)
           GOPATH=$(go env GOPATH)
           GOMODCACHE=$(go env GOMODCACHE)
           WORKSPACE="$GITHUB_WORKSPACE"
           MDIR="/lib/modules/${KVER}"
 
-          # Write the in-VM test runner (paths resolved on the host now).
-          # GOPROXY=off ensures Go uses only the local cache — the VM has no internet.
+          # Write the in-VM test runner.
+          # After switch_root this script IS PID 1, so it must never exit without
+          # powering off — the kernel panics if PID 1 exits.  Use SysRq for shutdown
+          # because Ubuntu's poweroff/halt require systemd which is not running.
+          # Do NOT use 'exec go test': we need to capture the exit code first.
           cat > "${WORKSPACE}/run-e2e-in-vm.sh" <<SCRIPT
           #!/bin/bash
-          set -euo pipefail
+          set -uo pipefail
           export PATH=${GOROOT}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
           export GOPATH=${GOPATH}
           export GOMODCACHE=${GOMODCACHE}
           export GOPROXY=off
           export GONOSUMCHECK=*
           cd ${WORKSPACE}
-          exec go test -tags integration -v -count=1 ./test/e2e/
+          go test -tags integration -v -count=1 ./test/e2e/
+          RC=\$?
+          sync
+          echo \$RC > /tmp/vm-exit-code
+          sync
+          echo 1 > /proc/sys/kernel/sysrq
+          echo o > /proc/sysrq-trigger
+          sleep 30
           SCRIPT
           chmod +x "${WORKSPACE}/run-e2e-in-vm.sh"
 
@@ -159,7 +170,7 @@ jobs:
           D=$(mktemp -d)
           mkdir -p "${D}"/{bin,proc,sys,dev,newroot,lib/modules}
           cp /bin/busybox "${D}/bin/"
-          for cmd in sh mount umount mkdir pivot_root poweroff insmod sync; do
+          for cmd in sh mount umount mkdir switch_root insmod sync; do
             ln -sf busybox "${D}/bin/${cmd}"
           done
 
@@ -197,33 +208,22 @@ jobs:
             [ -f /lib/modules/\${m}.ko ] && insmod /lib/modules/\${m}.ko || true
           done
 
-          # pivot_root into the host filesystem (9p).
-          # chroot changes the process view but leaves the kernel VFS root unchanged,
-          # so bpf_d_path would return /host/etc/passwd instead of /etc/passwd,
-          # breaking every BPF map lookup.  pivot_root changes the VFS root itself.
+          # Mount the host filesystem and move virtual FSes into it.
           mount -t 9p -o trans=virtio,version=9p2000.L,cache=mmap host9p /newroot
-          mkdir -p /newroot/old_initrd
-          cd /newroot
-          pivot_root . old_initrd
+          mount --move /proc /newroot/proc
+          mount --move /sys  /newroot/sys
+          mount --move /dev  /newroot/dev
 
-          # Re-establish virtual filesystems under the new root.
-          mount --move /old_initrd/proc /proc
-          mount --move /old_initrd/sys  /sys
-          mount --move /old_initrd/dev  /dev
+          # Remount tracing under the moved sysfs (submounts are not carried by --move).
+          mkdir -p /newroot/sys/kernel/debug /newroot/sys/kernel/tracing
+          mount -t debugfs debugfs /newroot/sys/kernel/debug  || true
+          mount -t tracefs tracefs /newroot/sys/kernel/tracing || true
 
-          # Remount tracing interfaces (pivot_root does not carry submounts).
-          mkdir -p /sys/kernel/debug /sys/kernel/tracing
-          mount -t debugfs debugfs /sys/kernel/debug  || true
-          mount -t tracefs tracefs /sys/kernel/tracing || true
-
-          umount -l /old_initrd || true
-
-          ${WORKSPACE}/run-e2e-in-vm.sh
-          RC=\$?
-          sync
-          echo \$RC > /tmp/vm-exit-code
-          sync
-          poweroff -f
+          # switch_root: uses mount --move to make /newroot the VFS root, then frees
+          # the initramfs.  Unlike chroot or pivot_root-from-rootfs, this changes the
+          # mount namespace root so bpf_d_path returns /etc/passwd, not /newroot/etc/passwd.
+          # The test runner script is exec'd as PID 1 and handles shutdown itself.
+          exec switch_root /newroot ${WORKSPACE}/run-e2e-in-vm.sh
           INIT
           chmod +x "${D}/init"
 
@@ -235,8 +235,8 @@ jobs:
         run: |
           # Boot the generic kernel (with CONFIG_BPF_LSM=y) under QEMU-KVM.
           # lsm=bpf activates BPF LSM hooks (required for inline blocking).
-          # The host filesystem is shared read-write via virtio-9p so the guest
-          # init can chroot into it and run the test as if on a native machine.
+          # The host filesystem is shared read-write via virtio-9p; switch_root
+          # makes it the VFS root so bpf_d_path returns canonical paths.
           # -no-reboot causes QEMU to exit when the guest powers off.
           sudo qemu-system-x86_64 \
             -enable-kvm \
