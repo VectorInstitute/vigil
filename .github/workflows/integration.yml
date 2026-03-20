@@ -104,8 +104,9 @@ jobs:
           # linux-image-generic on Ubuntu 22.04+ has CONFIG_BPF_LSM=y.
           # The azure kernel used by GitHub runners does not.
           # busybox-static provides the minimal init tooling for our custom initramfs.
+          # zstd is needed to decompress *.ko.zst modules (Ubuntu 24.04 default).
           sudo apt-get install -y --no-install-recommends \
-            qemu-system-x86 busybox-static linux-image-generic
+            qemu-system-x86 busybox-static linux-image-generic zstd
 
           VMLINUZ=$(ls /boot/vmlinuz-*-generic | sort -V | tail -1)
           KVER="${VMLINUZ#/boot/vmlinuz-}"
@@ -121,14 +122,17 @@ jobs:
       - name: Build minimal initramfs
         if: env.KVM_AVAILABLE == 'true'
         run: |
-          # Strategy: boot a tiny busybox initramfs that mounts the host filesystem
-          # via virtio-9p, then chroots into it. The chroot makes every host path
-          # (Go toolchain, workspace, BPF objects) visible at its original absolute path,
-          # so the e2e test runs exactly as it would on a native machine.
+          # Strategy: boot a tiny busybox initramfs that:
+          #   1. loads virtio + 9p kernel modules (they are not built-in on Ubuntu)
+          #   2. mounts the host filesystem via virtio-9p at /host
+          #   3. chroots into it so all host paths (Go, workspace, BPF objects)
+          #      are visible at their original absolute paths
+          #   4. runs the e2e test, writes exit code, powers off
           GOROOT=$(go env GOROOT)
           WORKSPACE="$GITHUB_WORKSPACE"
+          MDIR="/lib/modules/${KVER}"
 
-          # Write the in-VM test runner (host paths, resolved now on the host).
+          # Write the in-VM test runner (paths resolved on the host now).
           cat > "${WORKSPACE}/run-e2e-in-vm.sh" <<SCRIPT
           #!/bin/bash
           set -euo pipefail
@@ -140,25 +144,44 @@ jobs:
 
           # Build the initramfs tree.
           D=$(mktemp -d)
-          mkdir -p "${D}"/{bin,proc,sys,dev,host}
+          mkdir -p "${D}"/{bin,proc,sys,dev,host,lib/modules}
           cp /bin/busybox "${D}/bin/"
-          for cmd in sh mount chroot poweroff; do
+          for cmd in sh mount chroot poweroff insmod; do
             ln -sf busybox "${D}/bin/${cmd}"
           done
 
-          # init: mount virtual fs, mount host FS via 9p, chroot + run test, poweroff.
-          # We write the exit code to /tmp on the host (visible as /host/tmp/ here)
-          # so the outer workflow step can read it after QEMU exits.
+          # Embed virtio + 9p modules so init can insmod them before the 9p mount.
+          # virtio/9p are compiled as modules (not built-in) on Ubuntu generic kernels.
+          # Ubuntu 24.04 compresses modules as *.ko.zst; handle gz and plain too.
+          for mod in virtio virtio_ring virtio_pci 9pnet 9pnet_virtio 9p; do
+            src=$(find "${MDIR}" -name "${mod}.ko*" 2>/dev/null | head -1)
+            [ -z "$src" ] && echo "  (module ${mod} not found, skipping)" && continue
+            case "$src" in
+              *.ko.gz)  zcat "$src"          > "${D}/lib/modules/${mod}.ko" ;;
+              *.ko.zst) zstd -d "$src" -o     "${D}/lib/modules/${mod}.ko" ;;
+              *.ko)     cp   "$src"            "${D}/lib/modules/${mod}.ko" ;;
+            esac
+            echo "  embedded ${mod}.ko (from $(basename $src))"
+          done
+
           cat > "${D}/init" <<INIT
           #!/bin/sh
           export PATH=/bin
           mount -t proc  proc  /proc
           mount -t sysfs sysfs /sys
           mount -t devtmpfs devtmpfs /dev
+
+          # Load virtio + 9p modules in dependency order.
+          # Errors are non-fatal (module may already be built-in).
+          for m in virtio virtio_ring virtio_pci 9pnet 9pnet_virtio 9p; do
+            [ -f /lib/modules/\${m}.ko ] && insmod /lib/modules/\${m}.ko 2>/dev/null || true
+          done
+
           mount -t 9p -o trans=virtio,version=9p2000.L,cache=mmap host9p /host
           mount --bind /proc /host/proc
           mount --bind /sys  /host/sys
           mount --bind /dev  /host/dev
+
           chroot /host ${WORKSPACE}/run-e2e-in-vm.sh
           echo \$? > /host/tmp/vm-exit-code
           poweroff -f
