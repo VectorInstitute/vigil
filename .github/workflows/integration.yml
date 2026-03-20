@@ -1,0 +1,85 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bpf-build:
+    name: Build eBPF Programs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install eBPF build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y clang llvm bpftool linux-headers-$(uname -r) libbpf-dev
+
+      - name: Generate vmlinux.h
+        run: bpftool btf dump file /sys/kernel/btf/vmlinux format c > bpf/vmlinux.h
+
+      - name: Build eBPF programs
+        run: |
+          ARCH=$(uname -m | sed 's/x86_64/x86/' | sed 's/aarch64/arm64/')
+          clang -g -O2 -target bpf -D__TARGET_ARCH_${ARCH} \
+            -I./bpf/headers \
+            -I/usr/include/$(uname -m)-linux-gnu \
+            -c bpf/probe.c -o bpf/probe.bpf.o
+          clang -g -O2 -target bpf -D__TARGET_ARCH_${ARCH} \
+            -I./bpf/headers \
+            -I/usr/include/$(uname -m)-linux-gnu \
+            -c bpf/lsm.c -o bpf/lsm.bpf.o
+          bpftool gen object bpf/vigil.bpf.o bpf/probe.bpf.o bpf/lsm.bpf.o
+
+      - name: Upload eBPF object
+        uses: actions/upload-artifact@v4
+        with:
+          name: vigil-bpf
+          path: bpf/vigil.bpf.o
+
+  e2e:
+    name: e2e Jailbreak Escape Test
+    runs-on: ubuntu-latest
+    needs: bpf-build
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: Download eBPF object
+        uses: actions/download-artifact@v4
+        with:
+          name: vigil-bpf
+          path: bpf/
+
+      - name: Check BPF LSM support
+        id: bpf_lsm
+        run: |
+          if [ -f /sys/kernel/security/lsm ] && grep -q "bpf" /sys/kernel/security/lsm; then
+            echo "available=true" >> $GITHUB_OUTPUT
+            echo "BPF LSM is enabled on this runner"
+          else
+            echo "available=false" >> $GITHUB_OUTPUT
+            LSM=$(cat /sys/kernel/security/lsm 2>/dev/null || echo "unavailable")
+            echo "BPF LSM not active (active LSMs: ${LSM}) — skipping e2e blocking test"
+          fi
+
+      - name: Run e2e test
+        if: steps.bpf_lsm.outputs.available == 'true'
+        run: sudo /usr/local/go/bin/go test -tags integration -v -count=1 ./test/e2e/
+
+      - name: Skip notice
+        if: steps.bpf_lsm.outputs.available != 'true'
+        run: |
+          echo "::notice::e2e blocking test skipped — runner kernel does not have lsm=bpf."
+          echo "To run locally: add 'lsm=bpf' to GRUB_CMDLINE_LINUX and run 'make test-integration'."
