@@ -43,7 +43,8 @@ struct {
 SEC("lsm/file_open")
 int BPF_PROG(vigil_file_open, struct file *file) {
     char path[MAX_PATH_LEN] = {};
-    bpf_d_path(&file->f_path, path, sizeof(path));
+    int dpath_ret = bpf_d_path(&file->f_path, path, sizeof(path));
+    bpf_printk("vigil file_open: ret=%d path=[%s]\n", dpath_ret, path);
 
     __u8 *blocked = bpf_map_lookup_elem(&blocked_paths, path);
     if (!blocked)
@@ -107,7 +108,8 @@ int BPF_PROG(vigil_socket_connect, struct socket *sock, struct sockaddr *address
 SEC("lsm/bprm_check_security")
 int BPF_PROG(vigil_bprm_check, struct linux_binprm *bprm) {
     char path[MAX_PATH_LEN] = {};
-    bpf_d_path(&bprm->file->f_path, path, sizeof(path));
+    int dpath_ret = bpf_d_path(&bprm->file->f_path, path, sizeof(path));
+    bpf_printk("vigil bprm_check: ret=%d path=[%s]\n", dpath_ret, path);
 
     __u8 *blocked = bpf_map_lookup_elem(&blocked_paths, path);
     if (!blocked)

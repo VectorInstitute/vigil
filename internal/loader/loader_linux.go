@@ -173,6 +173,26 @@ func (l *Loader) Close() error {
 	return nil
 }
 
+// BlockedPathKeys returns all path keys currently stored in the blocked_paths map.
+// Used for diagnostic logging in tests.
+func (l *Loader) BlockedPathKeys() []string {
+	var out []string
+	var key [256]byte
+	var val uint8
+	iter := l.objs.BlockedPaths.Iterate()
+	for iter.Next(&key, &val) {
+		end := 256
+		for i, b := range key {
+			if b == 0 {
+				end = i
+				break
+			}
+		}
+		out = append(out, string(key[:end]))
+	}
+	return out
+}
+
 // BlockIP adds an IPv4 address to the runtime block map.
 // Called by the daemon when the detector flags a new connection.
 func (l *Loader) BlockIP(ip net.IP) error {

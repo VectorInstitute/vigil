@@ -67,6 +67,12 @@ func TestJailbreakEscape(t *testing.T) {
 	require.NoError(t, err, "loader.Load: ensure kernel has CONFIG_BPF_LSM=y and lsm=bpf")
 	defer l.Close()
 
+	// Diagnostic: log map contents so we can verify keys match bpf_d_path output.
+	t.Log("blocked_paths map keys:")
+	for _, k := range l.BlockedPathKeys() {
+		t.Logf("  %q", k)
+	}
+
 	det := detector.New(p)
 	var auditBuf bytes.Buffer
 	log := audit.New(&auditBuf)
