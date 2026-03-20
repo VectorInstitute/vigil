@@ -117,6 +117,12 @@ jobs:
             || { echo "::error::linux-image-generic is missing CONFIG_BPF_LSM=y"; exit 1; }
           echo "CONFIG_BPF_LSM=y confirmed in generic kernel $KVER"
 
+          # virtme-ng's --run mode expects arch/x86/boot/bzImage in a kernel tree.
+          # Ubuntu's vmlinuz is a compressed bzImage — place it where vng expects it.
+          mkdir -p /tmp/kbuild/arch/x86/boot
+          sudo cp "$VMLINUZ_SRC" /tmp/kbuild/arch/x86/boot/bzImage
+          sudo chmod -R a+rX /tmp/kbuild
+
       - name: Install virtme-ng
         if: env.KVM_AVAILABLE == 'true'
         run: sudo pip install --break-system-packages virtme-ng
@@ -139,12 +145,14 @@ jobs:
       - name: Run e2e test inside micro-VM with lsm=bpf
         if: env.KVM_AVAILABLE == 'true'
         run: |
-          # --root-release tells vng to use the installed generic kernel by version.
-          # --append injects lsm=bpf into the kernel cmdline before boot.
+          # --run points vng at our minimal kernel tree (bzImage from linux-image-generic).
+          # --root-release tells vng which /lib/modules/<KVER> to use inside the guest.
+          # --append injects lsm=bpf into the kernel cmdline.
           # --exec runs our script as root inside the guest.
           # virtme-ng mounts the host filesystem via 9p, so the workspace,
           # Go toolchain, BPF object, and profiles are all accessible in the VM.
           sudo vng \
+            --run /tmp/kbuild \
             --root-release "$KVER" \
             --append "lsm=bpf" \
             --exec "$GITHUB_WORKSPACE/run-e2e-in-vm.sh"
