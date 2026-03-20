@@ -97,65 +97,102 @@ jobs:
             ls -la /dev/kvm
           fi
 
-      - name: Install QEMU and generic kernel with CONFIG_BPF_LSM=y
+      - name: Install QEMU, busybox, and generic kernel with CONFIG_BPF_LSM=y
         if: env.KVM_AVAILABLE == 'true'
         run: |
           sudo apt-get update -qq
           # linux-image-generic on Ubuntu 22.04+ has CONFIG_BPF_LSM=y.
           # The azure kernel used by GitHub runners does not.
+          # busybox-static provides the minimal init tooling for our custom initramfs.
           sudo apt-get install -y --no-install-recommends \
-            qemu-system-x86 linux-image-generic
+            qemu-system-x86 busybox-static linux-image-generic
 
-          VMLINUZ_SRC=$(ls /boot/vmlinuz-*-generic | sort -V | tail -1)
-          KVER="${VMLINUZ_SRC#/boot/vmlinuz-}"
-          echo "Using kernel: $VMLINUZ_SRC (version $KVER)"
+          VMLINUZ=$(ls /boot/vmlinuz-*-generic | sort -V | tail -1)
+          KVER="${VMLINUZ#/boot/vmlinuz-}"
+          echo "VMLINUZ=$VMLINUZ" >> $GITHUB_ENV
           echo "KVER=$KVER" >> $GITHUB_ENV
+          echo "Using kernel: $VMLINUZ ($KVER)"
 
-          # Kernel config may be plain text or gzip-compressed depending on the build.
           CONFIG=$(ls /boot/config-*-generic | sort -V | tail -1)
           (zcat "$CONFIG" 2>/dev/null || cat "$CONFIG") | grep -q "^CONFIG_BPF_LSM=y" \
             || { echo "::error::linux-image-generic is missing CONFIG_BPF_LSM=y"; exit 1; }
-          echo "CONFIG_BPF_LSM=y confirmed in generic kernel $KVER"
+          echo "CONFIG_BPF_LSM=y confirmed"
 
-          # virtme-ng's --run mode expects arch/x86/boot/bzImage in a kernel tree.
-          # Ubuntu's vmlinuz is a compressed bzImage — place it where vng expects it.
-          mkdir -p /tmp/kbuild/arch/x86/boot
-          sudo cp "$VMLINUZ_SRC" /tmp/kbuild/arch/x86/boot/bzImage
-          sudo chmod -R a+rX /tmp/kbuild
-
-      - name: Install virtme-ng
-        if: env.KVM_AVAILABLE == 'true'
-        run: sudo pip install --break-system-packages virtme-ng
-
-      - name: Write e2e runner script
+      - name: Build minimal initramfs
         if: env.KVM_AVAILABLE == 'true'
         run: |
-          # Write to the workspace so virtme-ng can find it via the 9p host mount.
-          # Using a script file avoids quoting issues with --exec.
+          # Strategy: boot a tiny busybox initramfs that mounts the host filesystem
+          # via virtio-9p, then chroots into it. The chroot makes every host path
+          # (Go toolchain, workspace, BPF objects) visible at its original absolute path,
+          # so the e2e test runs exactly as it would on a native machine.
           GOROOT=$(go env GOROOT)
-          cat > "$GITHUB_WORKSPACE/run-e2e-in-vm.sh" <<EOF
+          WORKSPACE="$GITHUB_WORKSPACE"
+
+          # Write the in-VM test runner (host paths, resolved now on the host).
+          cat > "${WORKSPACE}/run-e2e-in-vm.sh" <<SCRIPT
           #!/bin/bash
           set -euo pipefail
           export PATH=${GOROOT}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-          cd $GITHUB_WORKSPACE
+          cd ${WORKSPACE}
           exec go test -tags integration -v -count=1 ./test/e2e/
-          EOF
-          chmod +x "$GITHUB_WORKSPACE/run-e2e-in-vm.sh"
+          SCRIPT
+          chmod +x "${WORKSPACE}/run-e2e-in-vm.sh"
+
+          # Build the initramfs tree.
+          D=$(mktemp -d)
+          mkdir -p "${D}"/{bin,proc,sys,dev,host}
+          cp /bin/busybox "${D}/bin/"
+          for cmd in sh mount chroot poweroff; do
+            ln -sf busybox "${D}/bin/${cmd}"
+          done
+
+          # init: mount virtual fs, mount host FS via 9p, chroot + run test, poweroff.
+          # We write the exit code to /tmp on the host (visible as /host/tmp/ here)
+          # so the outer workflow step can read it after QEMU exits.
+          cat > "${D}/init" <<INIT
+          #!/bin/sh
+          export PATH=/bin
+          mount -t proc  proc  /proc
+          mount -t sysfs sysfs /sys
+          mount -t devtmpfs devtmpfs /dev
+          mount -t 9p -o trans=virtio,version=9p2000.L,cache=mmap host9p /host
+          mount --bind /proc /host/proc
+          mount --bind /sys  /host/sys
+          mount --bind /dev  /host/dev
+          chroot /host ${WORKSPACE}/run-e2e-in-vm.sh
+          echo \$? > /host/tmp/vm-exit-code
+          poweroff -f
+          INIT
+          chmod +x "${D}/init"
+
+          (cd "${D}" && find . | cpio -oH newc | gzip > /tmp/vigil-initrd.cpio.gz)
+          echo "Initramfs: $(ls -lh /tmp/vigil-initrd.cpio.gz)"
 
       - name: Run e2e test inside micro-VM with lsm=bpf
         if: env.KVM_AVAILABLE == 'true'
         run: |
-          # --run points vng at our minimal kernel tree (bzImage from linux-image-generic).
-          # --root-release tells vng which /lib/modules/<KVER> to use inside the guest.
-          # --append injects lsm=bpf into the kernel cmdline.
-          # --exec runs our script as root inside the guest.
-          # virtme-ng mounts the host filesystem via 9p, so the workspace,
-          # Go toolchain, BPF object, and profiles are all accessible in the VM.
-          sudo vng \
-            --run /tmp/kbuild \
-            --root-release "$KVER" \
-            --append "lsm=bpf" \
-            --exec "$GITHUB_WORKSPACE/run-e2e-in-vm.sh"
+          # Boot the generic kernel (with CONFIG_BPF_LSM=y) under QEMU-KVM.
+          # lsm=bpf activates BPF LSM hooks (required for inline blocking).
+          # The host filesystem is shared read-write via virtio-9p so the guest
+          # init can chroot into it and run the test as if on a native machine.
+          # -no-reboot causes QEMU to exit when the guest powers off.
+          sudo qemu-system-x86_64 \
+            -enable-kvm \
+            -m 2G \
+            -cpu host \
+            -smp 2 \
+            -nographic \
+            -no-reboot \
+            -serial stdio \
+            -kernel "$VMLINUZ" \
+            -initrd /tmp/vigil-initrd.cpio.gz \
+            -append "console=ttyS0 panic=-1 lsm=bpf quiet" \
+            -fsdev local,id=host9p,path=/,security_model=none,multidevs=remap \
+            -device virtio-9p-pci,fsdev=host9p,mount_tag=host9p
+
+          VM_RC=$(cat /tmp/vm-exit-code 2>/dev/null || echo 1)
+          echo "e2e exit code: ${VM_RC}"
+          exit "${VM_RC}"
 
       - name: KVM unavailable notice
         if: env.KVM_AVAILABLE != 'true'
