@@ -38,13 +38,12 @@ struct {
 // ── LSM: file_open ────────────────────────────────────────────────────────────
 
 // Runs before every file open. Returns -EPERM to deny.
-// Stack budget: path[256] + struct path(16) = ~272 bytes — within 512-byte BPF limit.
-// struct event is written directly into the ring buffer reservation (not on stack).
+// bpf_d_path requires a pointer into kernel memory (not a stack copy),
+// so pass &file->f_path directly rather than a BPF_CORE_READ copy.
 SEC("lsm/file_open")
 int BPF_PROG(vigil_file_open, struct file *file) {
     char path[MAX_PATH_LEN] = {};
-    struct path f_path = BPF_CORE_READ(file, f_path);
-    bpf_d_path(&f_path, path, sizeof(path));
+    bpf_d_path(&file->f_path, path, sizeof(path));
 
     __u8 *blocked = bpf_map_lookup_elem(&blocked_paths, path);
     if (!blocked)
@@ -101,12 +100,13 @@ int BPF_PROG(vigil_socket_connect, struct socket *sock, struct sockaddr *address
 // ── LSM: bprm_check_security ─────────────────────────────────────────────────
 
 // Runs before every exec. Returns -EPERM to deny.
-// Same stack strategy as vigil_file_open.
+// BPF_CORE_READ(bprm, file) returns a kernel pointer; pass &bprm_file->f_path
+// so bpf_d_path receives a trusted kernel pointer, not a stack copy.
 SEC("lsm/bprm_check_security")
 int BPF_PROG(vigil_bprm_check, struct linux_binprm *bprm) {
     char path[MAX_PATH_LEN] = {};
-    struct path f_path = BPF_CORE_READ(bprm, file, f_path);
-    bpf_d_path(&f_path, path, sizeof(path));
+    struct file *bprm_file = BPF_CORE_READ(bprm, file);
+    bpf_d_path(&bprm_file->f_path, path, sizeof(path));
 
     __u8 *blocked = bpf_map_lookup_elem(&blocked_paths, path);
     if (!blocked)
