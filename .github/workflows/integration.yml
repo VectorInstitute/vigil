@@ -124,7 +124,7 @@ jobs:
 
       - name: Install virtme-ng
         if: env.KVM_AVAILABLE == 'true'
-        run: pip install --break-system-packages virtme-ng
+        run: sudo pip install --break-system-packages virtme-ng
 
       - name: Run e2e test inside micro-VM with lsm=bpf
         if: env.KVM_AVAILABLE == 'true'
