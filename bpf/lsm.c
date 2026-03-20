@@ -35,20 +35,11 @@ struct {
     __type(value, __u8);
 } blocked_ipv4 SEC(".maps");
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-static __always_inline void emit_block(struct event *e) {
-    struct event *r = bpf_ringbuf_reserve(&events, sizeof(*r), 0);
-    if (!r) return;
-    __builtin_memcpy(r, e, sizeof(*r));
-    r->timestamp_ns = bpf_ktime_get_ns();
-    r->action = ACTION_BLOCK;
-    bpf_ringbuf_submit(r, 0);
-}
-
 // ── LSM: file_open ────────────────────────────────────────────────────────────
 
 // Runs before every file open. Returns -EPERM to deny.
+// Stack budget: path[256] + struct path(16) = ~272 bytes — within 512-byte BPF limit.
+// struct event is written directly into the ring buffer reservation (not on stack).
 SEC("lsm/file_open")
 int BPF_PROG(vigil_file_open, struct file *file) {
     char path[MAX_PATH_LEN] = {};
@@ -57,15 +48,20 @@ int BPF_PROG(vigil_file_open, struct file *file) {
 
     __u8 *blocked = bpf_map_lookup_elem(&blocked_paths, path);
     if (!blocked)
-        return 0; // allow
+        return 0;
 
-    struct event e = {};
-    e.event_type = EVENT_FILE_OPEN;
-    e.pid  = bpf_get_current_pid_tgid() >> 32;
-    e.tgid = (__u32)bpf_get_current_pid_tgid();
-    bpf_get_current_comm(&e.comm, sizeof(e.comm));
-    __builtin_memcpy(e.path, path, sizeof(path));
-    emit_block(&e);
+    struct event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    if (!e)
+        return -1;
+    __builtin_memset(e, 0, sizeof(*e));
+    e->timestamp_ns = bpf_ktime_get_ns();
+    e->event_type   = EVENT_FILE_OPEN;
+    e->action       = ACTION_BLOCK;
+    e->pid          = bpf_get_current_pid_tgid() >> 32;
+    e->tgid         = (__u32)bpf_get_current_pid_tgid();
+    bpf_get_current_comm(&e->comm, sizeof(e->comm));
+    __builtin_memcpy(e->path, path, sizeof(path));
+    bpf_ringbuf_submit(e, 0);
 
     return -1; // kernel maps -1 → -EPERM for LSM deny
 }
@@ -85,14 +81,19 @@ int BPF_PROG(vigil_socket_connect, struct socket *sock, struct sockaddr *address
     if (!blocked)
         return 0;
 
-    struct event e = {};
-    e.event_type = EVENT_NET_CONNECT;
-    e.pid      = bpf_get_current_pid_tgid() >> 32;
-    e.tgid     = (__u32)bpf_get_current_pid_tgid();
-    e.dest_ip4 = dest_ip;
-    e.dest_port = bpf_ntohs(BPF_CORE_READ(sin, sin_port));
-    bpf_get_current_comm(&e.comm, sizeof(e.comm));
-    emit_block(&e);
+    struct event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    if (!e)
+        return -1;
+    __builtin_memset(e, 0, sizeof(*e));
+    e->timestamp_ns = bpf_ktime_get_ns();
+    e->event_type   = EVENT_NET_CONNECT;
+    e->action       = ACTION_BLOCK;
+    e->pid          = bpf_get_current_pid_tgid() >> 32;
+    e->tgid         = (__u32)bpf_get_current_pid_tgid();
+    e->dest_ip4     = dest_ip;
+    e->dest_port    = bpf_ntohs(BPF_CORE_READ(sin, sin_port));
+    bpf_get_current_comm(&e->comm, sizeof(e->comm));
+    bpf_ringbuf_submit(e, 0);
 
     return -1; // -EPERM
 }
@@ -100,6 +101,7 @@ int BPF_PROG(vigil_socket_connect, struct socket *sock, struct sockaddr *address
 // ── LSM: bprm_check_security ─────────────────────────────────────────────────
 
 // Runs before every exec. Returns -EPERM to deny.
+// Same stack strategy as vigil_file_open.
 SEC("lsm/bprm_check_security")
 int BPF_PROG(vigil_bprm_check, struct linux_binprm *bprm) {
     char path[MAX_PATH_LEN] = {};
@@ -110,13 +112,18 @@ int BPF_PROG(vigil_bprm_check, struct linux_binprm *bprm) {
     if (!blocked)
         return 0;
 
-    struct event e = {};
-    e.event_type = EVENT_EXEC;
-    e.pid  = bpf_get_current_pid_tgid() >> 32;
-    e.tgid = (__u32)bpf_get_current_pid_tgid();
-    bpf_get_current_comm(&e.comm, sizeof(e.comm));
-    __builtin_memcpy(e.path, path, sizeof(path));
-    emit_block(&e);
+    struct event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    if (!e)
+        return -1;
+    __builtin_memset(e, 0, sizeof(*e));
+    e->timestamp_ns = bpf_ktime_get_ns();
+    e->event_type   = EVENT_EXEC;
+    e->action       = ACTION_BLOCK;
+    e->pid          = bpf_get_current_pid_tgid() >> 32;
+    e->tgid         = (__u32)bpf_get_current_pid_tgid();
+    bpf_get_current_comm(&e->comm, sizeof(e->comm));
+    __builtin_memcpy(e->path, path, sizeof(path));
+    bpf_ringbuf_submit(e, 0);
 
     return -1; // -EPERM
 }
