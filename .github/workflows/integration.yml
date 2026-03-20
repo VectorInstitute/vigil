@@ -20,7 +20,12 @@ jobs:
       - name: Install eBPF build dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y clang llvm bpftool linux-headers-$(uname -r) libbpf-dev
+          sudo apt-get install -y clang llvm linux-headers-$(uname -r) libbpf-dev \
+            linux-tools-$(uname -r) linux-tools-generic || true
+          # bpftool ships inside linux-tools; symlink to a stable path
+          BPFTOOL=$(find /usr/lib/linux-tools -name bpftool -type f 2>/dev/null | head -1)
+          if [ -n "$BPFTOOL" ]; then sudo ln -sf "$BPFTOOL" /usr/local/bin/bpftool; fi
+          bpftool --version
 
       - name: Generate vmlinux.h
         run: bpftool btf dump file /sys/kernel/btf/vmlinux format c > bpf/vmlinux.h

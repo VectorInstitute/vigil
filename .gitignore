@@ -1,5 +1,5 @@
-# Binary
-vigil
+# Binary (root-level only)
+/vigil
 
 # eBPF build artifacts
 bpf/*.o
