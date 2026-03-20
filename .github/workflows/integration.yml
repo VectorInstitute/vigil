@@ -25,18 +25,19 @@ jobs:
 
       - name: Install bpftool
         run: |
-          # Search all likely paths (the azure kernel tools may not ship bpftool)
-          BPFTOOL_BIN=$(find /usr/lib/linux-tools /usr/lib/bpf-tools /usr/sbin /usr/bin \
-            -name bpftool ! -name "*.sh" 2>/dev/null | head -1)
+          # /usr/sbin/bpftool is a wrapper script that fails on kernel version mismatch.
+          # Search only in linux-tools subdirectories for the actual ELF binary.
+          BPFTOOL_BIN=$(find /usr/lib/linux-tools -maxdepth 3 \
+            -name bpftool -executable 2>/dev/null | head -1)
 
           if [ -z "$BPFTOOL_BIN" ]; then
-            echo "bpftool not in standard paths — building from libbpf/bpftool source..."
+            echo "bpftool ELF not found — building from libbpf/bpftool v7.4.0..."
             sudo apt-get install -y git
             git clone --depth 1 --branch v7.4.0 \
               https://github.com/libbpf/bpftool.git /tmp/bpftool-src
             make -C /tmp/bpftool-src/src -j$(nproc)
             sudo make -C /tmp/bpftool-src/src install
-            BPFTOOL_BIN=/usr/local/sbin/bpftool
+            BPFTOOL_BIN=$(which bpftool)
           fi
 
           sudo ln -sf "$BPFTOOL_BIN" /usr/local/bin/bpftool
