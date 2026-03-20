@@ -85,3 +85,25 @@ func TestEvent_String_NetConnect(t *testing.T) {
 	assert.Contains(t, s, "8.8.8.8")
 	assert.Contains(t, s, "53")
 }
+
+func TestEvent_String_Exec(t *testing.T) {
+	e := events.Event{
+		Type: events.Exec,
+		Comm: "ollama",
+		PID:  42,
+		Path: "/bin/bash",
+		Argv: []string{"/bin/bash", "-i"},
+	}
+	s := e.String()
+	assert.Contains(t, s, "exec")
+	assert.Contains(t, s, "/bin/bash")
+}
+
+func TestEventType_String_Unknown(t *testing.T) {
+	assert.Equal(t, "unknown", events.Type(99).String())
+}
+
+func TestEvent_String_UnknownType(t *testing.T) {
+	e := events.Event{Type: events.Type(99), Comm: "test", PID: 1}
+	assert.Contains(t, e.String(), "unknown")
+}

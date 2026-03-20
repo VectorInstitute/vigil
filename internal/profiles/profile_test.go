@@ -116,6 +116,44 @@ func TestMatchIP_ExternalDenied(t *testing.T) {
 	}
 }
 
+// ── Verdict.String ───────────────────────────────────────────────────────────
+
+func TestVerdict_String(t *testing.T) {
+	assert.Equal(t, "ALLOW", profiles.VerdictAllow.String())
+	assert.Equal(t, "DENY", profiles.VerdictDeny.String())
+	assert.Equal(t, "DEFAULT", profiles.VerdictDefault.String())
+}
+
+// ── Default policy ───────────────────────────────────────────────────────────
+
+func TestDefaultDeny_AllowPolicy(t *testing.T) {
+	p, err := profiles.LoadBytes([]byte(`
+name: permissive
+default_policy: allow
+allowed_networks:
+  - 127.0.0.0/8
+`))
+	require.NoError(t, err)
+	assert.False(t, p.DefaultDeny())
+}
+
+// ── Deny takes precedence over allow ─────────────────────────────────────────
+
+func TestMatchPath_DenyBeforeAllow(t *testing.T) {
+	p, err := profiles.LoadBytes([]byte(`
+name: test
+denied_paths:
+  - /etc/passwd
+allowed_paths:
+  - /etc/**
+`))
+	require.NoError(t, err)
+	// /etc/passwd matches both denied and allowed; denied must win
+	assert.Equal(t, profiles.VerdictDeny, p.MatchPath("/etc/passwd"))
+	// /etc/hosts is only in allowed
+	assert.Equal(t, profiles.VerdictAllow, p.MatchPath("/etc/hosts"))
+}
+
 // ── Command matching ─────────────────────────────────────────────────────────
 
 func TestMatchCommand_AllowedRunners(t *testing.T) {

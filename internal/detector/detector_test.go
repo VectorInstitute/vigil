@@ -122,3 +122,19 @@ func TestDecision_CarriesOriginalEvent(t *testing.T) {
 	dec := d.Evaluate(e)
 	assert.Equal(t, e, dec.Event)
 }
+
+// ── Unknown event type ───────────────────────────────────────────────────────
+
+func TestEvaluate_UnknownEventType_PassThrough(t *testing.T) {
+	d := newDetector(t)
+	e := evt(events.Type(99))
+	dec := d.Evaluate(e)
+	assert.Equal(t, detector.Allow, dec.Action)
+}
+
+// ── Action.String ────────────────────────────────────────────────────────────
+
+func TestAction_String(t *testing.T) {
+	assert.Equal(t, "ALLOW", detector.Allow.String())
+	assert.Equal(t, "BLOCK", detector.Block.String())
+}
