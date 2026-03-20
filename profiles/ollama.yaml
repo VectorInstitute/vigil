@@ -16,6 +16,15 @@ denied_paths:
   - /proc/*/mem
   - /**/.aws/**
   - /**/.gnupg/**
+  # Shell and interpreter binaries — blocked to prevent prompt-injection → shell escape.
+  # On modern Ubuntu /bin → /usr/bin, so bpf_d_path returns the /usr/bin canonical path.
+  - /usr/bin/bash
+  - /usr/bin/sh
+  - /usr/bin/dash
+  - /usr/bin/python3
+  - /usr/bin/python3.*
+  - /bin/bash
+  - /bin/sh
 
 # Allowed paths (checked after denied)
 allowed_paths:

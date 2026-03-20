@@ -19,6 +19,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"testing"
@@ -69,6 +70,11 @@ func TestJailbreakEscape(t *testing.T) {
 	det := detector.New(p)
 	var auditBuf bytes.Buffer
 	log := audit.New(&auditBuf)
+
+	// Pre-block the known-bad IP so the BPF LSM hook returns EPERM synchronously.
+	// The production daemon does this at runtime via BlockIP after reading ring
+	// buffer events; in the e2e test we simulate that the daemon already acted.
+	require.NoError(t, l.BlockIP(net.ParseIP("8.8.8.8")))
 
 	// ── Step 3: drain ring buffer in background ───────────────────────────────
 	done := make(chan struct{})
