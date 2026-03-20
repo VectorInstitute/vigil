@@ -100,13 +100,14 @@ int BPF_PROG(vigil_socket_connect, struct socket *sock, struct sockaddr *address
 // ── LSM: bprm_check_security ─────────────────────────────────────────────────
 
 // Runs before every exec. Returns -EPERM to deny.
-// BPF_CORE_READ(bprm, file) returns a kernel pointer; pass &bprm_file->f_path
-// so bpf_d_path receives a trusted kernel pointer, not a stack copy.
+// Chain trusted pointer dereferences directly (bprm → file → f_path) so the
+// BPF verifier tracks the full chain as trusted_ptr_.  BPF_CORE_READ would
+// materialise the pointer via bpf_probe_read_kernel, producing a scalar and
+// failing the bpf_d_path type check.
 SEC("lsm/bprm_check_security")
 int BPF_PROG(vigil_bprm_check, struct linux_binprm *bprm) {
     char path[MAX_PATH_LEN] = {};
-    struct file *bprm_file = BPF_CORE_READ(bprm, file);
-    bpf_d_path(&bprm_file->f_path, path, sizeof(path));
+    bpf_d_path(&bprm->file->f_path, path, sizeof(path));
 
     __u8 *blocked = bpf_map_lookup_elem(&blocked_paths, path);
     if (!blocked)
