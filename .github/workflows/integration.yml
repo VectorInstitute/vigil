@@ -150,10 +150,11 @@ jobs:
             ln -sf busybox "${D}/bin/${cmd}"
           done
 
-          # Embed virtio + 9p modules so init can insmod them before the 9p mount.
-          # virtio/9p are compiled as modules (not built-in) on Ubuntu generic kernels.
+          # Embed 9p + dependency modules so init can insmod them before the 9p mount.
+          # On Ubuntu 6.8 generic: virtio/virtio_pci are built-in (=y), so no .ko exists.
+          # 9p.ko depends on fscache.ko which depends on netfs.ko — include the full chain.
           # Ubuntu 24.04 compresses modules as *.ko.zst; handle gz and plain too.
-          for mod in virtio virtio_ring virtio_pci 9pnet 9pnet_virtio 9p; do
+          for mod in netfs fscache 9pnet 9pnet_virtio 9p; do
             src=$(find "${MDIR}" -name "${mod}.ko*" 2>/dev/null | head -1)
             [ -z "$src" ] && echo "  (module ${mod} not found, skipping)" && continue
             case "$src" in
@@ -172,10 +173,10 @@ jobs:
           mount -t sysfs sysfs /sys
           mount -t devtmpfs devtmpfs /dev
 
-          # Load virtio + 9p modules in dependency order.
-          # Errors are non-fatal (module may already be built-in).
-          for m in virtio virtio_ring virtio_pci 9pnet 9pnet_virtio 9p; do
-            [ -f /lib/modules/\${m}.ko ] && insmod /lib/modules/\${m}.ko 2>/dev/null || true
+          # Load 9p dependency chain in order: netfs → fscache → 9pnet → 9pnet_virtio → 9p
+          # virtio/virtio_pci are built-in on Ubuntu generic, no insmod needed.
+          for m in netfs fscache 9pnet 9pnet_virtio 9p; do
+            [ -f /lib/modules/\${m}.ko ] && insmod /lib/modules/\${m}.ko || true
           done
 
           mount -t 9p -o trans=virtio,version=9p2000.L,cache=mmap host9p /host
