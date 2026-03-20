@@ -33,11 +33,12 @@ jobs:
           if [ -z "$BPFTOOL_BIN" ]; then
             echo "bpftool ELF not found — building from libbpf/bpftool v7.4.0..."
             sudo apt-get install -y git
-            git clone --depth 1 --branch v7.4.0 \
+            git clone --depth 1 --recurse-submodules --shallow-submodules \
+              --branch v7.4.0 \
               https://github.com/libbpf/bpftool.git /tmp/bpftool-src
             make -C /tmp/bpftool-src/src -j$(nproc)
             sudo make -C /tmp/bpftool-src/src install
-            BPFTOOL_BIN=$(which bpftool)
+            BPFTOOL_BIN=$(which bpftool 2>/dev/null || echo /usr/local/sbin/bpftool)
           fi
 
           sudo ln -sf "$BPFTOOL_BIN" /usr/local/bin/bpftool
