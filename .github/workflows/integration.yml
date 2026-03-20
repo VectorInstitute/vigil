@@ -183,7 +183,6 @@ jobs:
             -smp 2 \
             -nographic \
             -no-reboot \
-            -serial stdio \
             -kernel "$VMLINUZ" \
             -initrd /tmp/vigil-initrd.cpio.gz \
             -append "console=ttyS0 panic=-1 lsm=bpf quiet" \
