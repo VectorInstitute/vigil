@@ -146,7 +146,7 @@ jobs:
           D=$(mktemp -d)
           mkdir -p "${D}"/{bin,proc,sys,dev,host,lib/modules}
           cp /bin/busybox "${D}/bin/"
-          for cmd in sh mount chroot poweroff insmod; do
+          for cmd in sh mount chroot poweroff insmod sync; do
             ln -sf busybox "${D}/bin/${cmd}"
           done
 
@@ -166,6 +166,7 @@ jobs:
 
           cat > "${D}/init" <<INIT
           #!/bin/sh
+          set -x
           export PATH=/bin
           mount -t proc  proc  /proc
           mount -t sysfs sysfs /sys
@@ -183,7 +184,10 @@ jobs:
           mount --bind /dev  /host/dev
 
           chroot /host ${WORKSPACE}/run-e2e-in-vm.sh
-          echo \$? > /host/tmp/vm-exit-code
+          RC=\$?
+          sync
+          echo \$RC > /host/tmp/vm-exit-code
+          sync
           poweroff -f
           INIT
           chmod +x "${D}/init"
