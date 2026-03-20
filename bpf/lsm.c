@@ -16,7 +16,7 @@ char __license[] SEC("license") = "GPL";
 struct {
     __uint(type, BPF_MAP_TYPE_RINGBUF);
     __uint(max_entries, 1 << 24);
-} events SEC(".maps");
+} events __weak SEC(".maps");
 
 // Block-list for file paths: key = exact path string, value = 1
 // Populated by the Go daemon from the profile's denied_paths list.
