@@ -70,6 +70,7 @@ jobs:
     name: e2e Jailbreak Escape Test
     runs-on: ubuntu-latest
     needs: bpf-build
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -84,24 +85,64 @@ jobs:
           name: vigil-bpf
           path: bpf/
 
-      - name: Check BPF LSM support
-        id: bpf_lsm
+      - name: Verify KVM is available
         run: |
-          if [ -f /sys/kernel/security/lsm ] && grep -q "bpf" /sys/kernel/security/lsm; then
-            echo "available=true" >> $GITHUB_OUTPUT
-            echo "BPF LSM is enabled on this runner"
+          # GitHub-hosted ubuntu-latest runners expose /dev/kvm via nested virt.
+          # If this fails the job is skipped rather than erroring the PR.
+          if [ ! -e /dev/kvm ]; then
+            echo "::warning::KVM not available on this runner — skipping e2e VM test"
+            echo "KVM_AVAILABLE=false" >> $GITHUB_ENV
           else
-            echo "available=false" >> $GITHUB_OUTPUT
-            LSM=$(cat /sys/kernel/security/lsm 2>/dev/null || echo "unavailable")
-            echo "BPF LSM not active (active LSMs: ${LSM}) — skipping e2e blocking test"
+            echo "KVM_AVAILABLE=true" >> $GITHUB_ENV
+            ls -la /dev/kvm
           fi
 
-      - name: Run e2e test
-        if: steps.bpf_lsm.outputs.available == 'true'
-        run: sudo /usr/local/go/bin/go test -tags integration -v -count=1 ./test/e2e/
-
-      - name: Skip notice
-        if: steps.bpf_lsm.outputs.available != 'true'
+      - name: Install QEMU and generic kernel with CONFIG_BPF_LSM=y
+        if: env.KVM_AVAILABLE == 'true'
         run: |
-          echo "::notice::e2e blocking test skipped — runner kernel does not have lsm=bpf."
-          echo "To run locally: add 'lsm=bpf' to GRUB_CMDLINE_LINUX and run 'make test-integration'."
+          sudo apt-get update -qq
+          # linux-image-generic on Ubuntu 22.04+ has CONFIG_BPF_LSM=y.
+          # The azure kernel used by GitHub runners does not.
+          sudo apt-get install -y --no-install-recommends \
+            qemu-system-x86 linux-image-generic
+
+          VMLINUZ=$(ls /boot/vmlinuz-*-generic | sort -V | tail -1)
+          echo "VMLINUZ=$VMLINUZ" >> $GITHUB_ENV
+          echo "Using kernel: $VMLINUZ ($(file "$VMLINUZ"))"
+
+          # Hard-fail early rather than getting a confusing runtime error.
+          zcat /boot/config-*-generic | grep -q "^CONFIG_BPF_LSM=y" \
+            || { echo "::error::linux-image-generic is missing CONFIG_BPF_LSM=y"; exit 1; }
+          echo "CONFIG_BPF_LSM=y confirmed in generic kernel"
+
+      - name: Install virtme-ng
+        if: env.KVM_AVAILABLE == 'true'
+        run: pip install --break-system-packages virtme-ng
+
+      - name: Run e2e test inside micro-VM with lsm=bpf
+        if: env.KVM_AVAILABLE == 'true'
+        run: |
+          # Capture Go root on the host so we can inject it into the VM's PATH.
+          # virtme-ng mounts the host filesystem via 9p, so the binary is
+          # accessible at the same path inside the guest.
+          GOROOT=$(go env GOROOT)
+          WORKSPACE="$GITHUB_WORKSPACE"
+
+          # sudo -E preserves the environment; vng boots the generic kernel
+          # (with CONFIG_BPF_LSM=y) and appends lsm=bpf to the cmdline.
+          # The inner bash runs as root inside the guest.
+          sudo -E vng \
+            --kimg "$VMLINUZ" \
+            --append "lsm=bpf" \
+            -- bash -c "
+              set -euo pipefail
+              export PATH=${GOROOT}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+              cd ${WORKSPACE}
+              go test -tags integration -v -count=1 ./test/e2e/
+            "
+
+      - name: KVM unavailable notice
+        if: env.KVM_AVAILABLE != 'true'
+        run: |
+          echo "::notice::e2e test skipped — KVM not available on this runner."
+          echo "To run locally: boot Linux with 'lsm=bpf' and run 'sudo go test -tags integration -v ./test/e2e/'"
