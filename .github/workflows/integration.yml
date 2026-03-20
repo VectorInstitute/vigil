@@ -109,12 +109,7 @@ jobs:
           VMLINUZ_SRC=$(ls /boot/vmlinuz-*-generic | sort -V | tail -1)
           KVER="${VMLINUZ_SRC#/boot/vmlinuz-}"
           echo "Using kernel: $VMLINUZ_SRC (version $KVER)"
-
-          # /boot/vmlinuz-* is root-readable only (Debian/Ubuntu default).
-          # Copy to a world-readable location so vng can open it as the runner user.
-          sudo cp "$VMLINUZ_SRC" /tmp/vmlinuz-generic
-          sudo chmod a+r /tmp/vmlinuz-generic
-          echo "VMLINUZ=/tmp/vmlinuz-generic" >> $GITHUB_ENV
+          echo "KVER=$KVER" >> $GITHUB_ENV
 
           # Kernel config may be plain text or gzip-compressed depending on the build.
           CONFIG=$(ls /boot/config-*-generic | sort -V | tail -1)
@@ -126,27 +121,33 @@ jobs:
         if: env.KVM_AVAILABLE == 'true'
         run: sudo pip install --break-system-packages virtme-ng
 
+      - name: Write e2e runner script
+        if: env.KVM_AVAILABLE == 'true'
+        run: |
+          # Write to the workspace so virtme-ng can find it via the 9p host mount.
+          # Using a script file avoids quoting issues with --exec.
+          GOROOT=$(go env GOROOT)
+          cat > "$GITHUB_WORKSPACE/run-e2e-in-vm.sh" <<EOF
+          #!/bin/bash
+          set -euo pipefail
+          export PATH=${GOROOT}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+          cd $GITHUB_WORKSPACE
+          exec go test -tags integration -v -count=1 ./test/e2e/
+          EOF
+          chmod +x "$GITHUB_WORKSPACE/run-e2e-in-vm.sh"
+
       - name: Run e2e test inside micro-VM with lsm=bpf
         if: env.KVM_AVAILABLE == 'true'
         run: |
-          # Capture Go root on the host so we can inject it into the VM's PATH.
-          # virtme-ng mounts the host filesystem via 9p, so the binary is
-          # accessible at the same path inside the guest.
-          GOROOT=$(go env GOROOT)
-          WORKSPACE="$GITHUB_WORKSPACE"
-
-          # sudo -E preserves the environment; vng boots the generic kernel
-          # (with CONFIG_BPF_LSM=y) and appends lsm=bpf to the cmdline.
-          # The inner bash runs as root inside the guest.
-          sudo -E vng \
-            --kimg "$VMLINUZ" \
+          # --root-release tells vng to use the installed generic kernel by version.
+          # --append injects lsm=bpf into the kernel cmdline before boot.
+          # --exec runs our script as root inside the guest.
+          # virtme-ng mounts the host filesystem via 9p, so the workspace,
+          # Go toolchain, BPF object, and profiles are all accessible in the VM.
+          sudo vng \
+            --root-release "$KVER" \
             --append "lsm=bpf" \
-            -- bash -c "
-              set -euo pipefail
-              export PATH=${GOROOT}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-              cd ${WORKSPACE}
-              go test -tags integration -v -count=1 ./test/e2e/
-            "
+            --exec "$GITHUB_WORKSPACE/run-e2e-in-vm.sh"
 
       - name: KVM unavailable notice
         if: env.KVM_AVAILABLE != 'true'
