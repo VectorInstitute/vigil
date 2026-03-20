@@ -119,6 +119,11 @@ jobs:
             || { echo "::error::linux-image-generic is missing CONFIG_BPF_LSM=y"; exit 1; }
           echo "CONFIG_BPF_LSM=y confirmed"
 
+      - name: Pre-download Go module dependencies
+        if: env.KVM_AVAILABLE == 'true'
+        run: go mod download
+        working-directory: ${{ github.workspace }}
+
       - name: Build minimal initramfs
         if: env.KVM_AVAILABLE == 'true'
         run: |
@@ -129,14 +134,21 @@ jobs:
           #      are visible at their original absolute paths
           #   4. runs the e2e test, writes exit code, powers off
           GOROOT=$(go env GOROOT)
+          GOPATH=$(go env GOPATH)
+          GOMODCACHE=$(go env GOMODCACHE)
           WORKSPACE="$GITHUB_WORKSPACE"
           MDIR="/lib/modules/${KVER}"
 
           # Write the in-VM test runner (paths resolved on the host now).
+          # GOPROXY=off ensures Go uses only the local cache — the VM has no internet.
           cat > "${WORKSPACE}/run-e2e-in-vm.sh" <<SCRIPT
           #!/bin/bash
           set -euo pipefail
           export PATH=${GOROOT}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+          export GOPATH=${GOPATH}
+          export GOMODCACHE=${GOMODCACHE}
+          export GOPROXY=off
+          export GONOSUMCHECK=*
           cd ${WORKSPACE}
           exec go test -tags integration -v -count=1 ./test/e2e/
           SCRIPT
