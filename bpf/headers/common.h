@@ -1,5 +1,17 @@
 #pragma once
 
+// Kernel sparse annotations — vmlinux.h may define __user as an address-space
+// attribute that clang's BPF target rejects. Force it to empty unconditionally.
+#undef  __user
+#define __user
+
+// Socket family constants — defined as #defines in <linux/socket.h>,
+// not captured by BTF. Force-define unconditionally.
+#undef  AF_INET
+#undef  AF_INET6
+#define AF_INET  2
+#define AF_INET6 10
+
 #define MAX_PATH_LEN  256
 #define MAX_COMM_LEN  16
 #define MAX_ARGV_LEN  128

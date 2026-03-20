@@ -76,8 +76,7 @@ int trace_openat(struct trace_event_raw_sys_enter *ctx) {
     bpf_get_current_comm(&e.comm, sizeof(e.comm));
 
     // ctx->args[1] is the filename pointer for openat
-    const char __user *filename = (const char __user *)ctx->args[1];
-    bpf_probe_read_user_str(e.path, sizeof(e.path), filename);
+    bpf_probe_read_user_str(e.path, sizeof(e.path), (const void *)ctx->args[1]);
 
     emit_event(&e);
     return 0;
@@ -93,9 +92,7 @@ int trace_execve(struct trace_event_raw_sys_enter *ctx) {
     e.pid  = bpf_get_current_pid_tgid() >> 32;
     e.tgid = (__u32)bpf_get_current_pid_tgid();
     bpf_get_current_comm(&e.comm, sizeof(e.comm));
-
-    const char __user *filename = (const char __user *)ctx->args[0];
-    bpf_probe_read_user_str(e.path, sizeof(e.path), filename);
+    bpf_probe_read_user_str(e.path, sizeof(e.path), (const void *)ctx->args[0]);
 
     emit_event(&e);
     return 0;
@@ -112,13 +109,13 @@ int trace_connect(struct trace_event_raw_sys_enter *ctx) {
     e.tgid = (__u32)bpf_get_current_pid_tgid();
     bpf_get_current_comm(&e.comm, sizeof(e.comm));
 
-    // ctx->args[1] is struct sockaddr __user *
+    // ctx->args[1] is struct sockaddr * (user pointer, no __user annotation needed for BPF)
     struct sockaddr sa = {};
-    bpf_probe_read_user(&sa, sizeof(sa), (void __user *)ctx->args[1]);
+    bpf_probe_read_user(&sa, sizeof(sa), (const void *)ctx->args[1]);
 
     if (sa.sa_family == AF_INET) {
         struct sockaddr_in sin = {};
-        bpf_probe_read_user(&sin, sizeof(sin), (void __user *)ctx->args[1]);
+        bpf_probe_read_user(&sin, sizeof(sin), (const void *)ctx->args[1]);
         e.dest_ip4  = sin.sin_addr.s_addr;
         e.dest_port = bpf_ntohs(sin.sin_port);
         e.is_ipv6   = 0;
@@ -130,7 +127,7 @@ int trace_connect(struct trace_event_raw_sys_enter *ctx) {
 
     } else if (sa.sa_family == AF_INET6) {
         struct sockaddr_in6 sin6 = {};
-        bpf_probe_read_user(&sin6, sizeof(sin6), (void __user *)ctx->args[1]);
+        bpf_probe_read_user(&sin6, sizeof(sin6), (const void *)ctx->args[1]);
         __builtin_memcpy(e.dest_ip6, &sin6.sin6_addr, 16);
         e.dest_port = bpf_ntohs(sin6.sin6_port);
         e.is_ipv6   = 1;
