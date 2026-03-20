@@ -106,14 +106,21 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             qemu-system-x86 linux-image-generic
 
-          VMLINUZ=$(ls /boot/vmlinuz-*-generic | sort -V | tail -1)
-          echo "VMLINUZ=$VMLINUZ" >> $GITHUB_ENV
-          echo "Using kernel: $VMLINUZ ($(file "$VMLINUZ"))"
+          VMLINUZ_SRC=$(ls /boot/vmlinuz-*-generic | sort -V | tail -1)
+          KVER="${VMLINUZ_SRC#/boot/vmlinuz-}"
+          echo "Using kernel: $VMLINUZ_SRC (version $KVER)"
 
-          # Hard-fail early rather than getting a confusing runtime error.
-          zcat /boot/config-*-generic | grep -q "^CONFIG_BPF_LSM=y" \
+          # /boot/vmlinuz-* is root-readable only (Debian/Ubuntu default).
+          # Copy to a world-readable location so vng can open it as the runner user.
+          sudo cp "$VMLINUZ_SRC" /tmp/vmlinuz-generic
+          sudo chmod a+r /tmp/vmlinuz-generic
+          echo "VMLINUZ=/tmp/vmlinuz-generic" >> $GITHUB_ENV
+
+          # Kernel config may be plain text or gzip-compressed depending on the build.
+          CONFIG=$(ls /boot/config-*-generic | sort -V | tail -1)
+          (zcat "$CONFIG" 2>/dev/null || cat "$CONFIG") | grep -q "^CONFIG_BPF_LSM=y" \
             || { echo "::error::linux-image-generic is missing CONFIG_BPF_LSM=y"; exit 1; }
-          echo "CONFIG_BPF_LSM=y confirmed in generic kernel"
+          echo "CONFIG_BPF_LSM=y confirmed in generic kernel $KVER"
 
       - name: Install virtme-ng
         if: env.KVM_AVAILABLE == 'true'
