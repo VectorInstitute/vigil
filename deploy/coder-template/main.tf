@@ -50,7 +50,7 @@ resource "coder_agent" "main" {
       touch "/home/${local.username}/.home_seeded"
     fi
 
-    # Clone or update the vigil repo
+    # Clone or update the vigil repo (for profiles and demo scripts)
     cd "/home/${local.username}"
     if [ -d "${local.repo_name}/.git" ]; then
       echo "Updating ${local.repo_name}..."
@@ -63,22 +63,12 @@ resource "coder_agent" "main" {
       git checkout ${var.vigil_branch}
     fi
 
-    # Build vigil (BPF object + daemon)
-    export PATH=$PATH:/usr/local/go/bin
+    # Install vigil from pre-built GitHub release
+    echo "Installing vigil from latest release..."
+    sudo bash install.sh
 
-    # Install GCP kernel tools so bpftool can read /sys/kernel/btf/vmlinux.
-    # The image has linux-tools-generic but GCP VMs run linux-*-gcp kernels.
-    echo "Installing bpftool for GCP kernel..."
-    sudo apt-get install -y -qq linux-tools-gcp 2>/dev/null || true
-
-    echo "Building vigil..."
-    make bpf
-    make build
-
-    # Install vigil system-wide and copy profiles
-    sudo cp vigil /usr/local/bin/vigil
+    # Overlay repo profiles (may be newer than release)
     sudo mkdir -p /usr/lib/vigil
-    sudo cp bpf/vigil.bpf.o /usr/lib/vigil/vigil.bpf.o
     sudo cp -r profiles /usr/lib/vigil/profiles
     echo "vigil installed"
 
@@ -87,7 +77,6 @@ resource "coder_agent" "main" {
       cat >> "/home/${local.username}/.bashrc" <<'BASHRC'
 
 # auto-cd vigil
-export PATH=$PATH:/usr/local/go/bin
 cd ~/vigil 2>/dev/null || true
 echo ""
 echo "  vigil demo workspace — run: sudo ./demo/run_demo.sh"

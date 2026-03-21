@@ -1,0 +1,113 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build and publish release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: Install eBPF build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y clang llvm libbpf-dev linux-headers-$(uname -r) \
+            linux-tools-$(uname -r) linux-tools-common build-essential libelf-dev zlib1g-dev
+
+      - name: Install bpftool
+        run: |
+          BPFTOOL_BIN=$(find /usr/lib/linux-tools -maxdepth 3 \
+            -name bpftool -executable 2>/dev/null | head -1)
+
+          if [ -z "$BPFTOOL_BIN" ]; then
+            echo "bpftool ELF not found — building from source..."
+            sudo apt-get install -y git
+            git clone --depth 1 --recurse-submodules --shallow-submodules \
+              --branch v7.4.0 \
+              https://github.com/libbpf/bpftool.git /tmp/bpftool-src
+            make -C /tmp/bpftool-src/src -j$(nproc)
+            sudo make -C /tmp/bpftool-src/src install
+            BPFTOOL_BIN=$(which bpftool 2>/dev/null || echo /usr/local/sbin/bpftool)
+          fi
+
+          sudo ln -sf "$BPFTOOL_BIN" /usr/local/bin/bpftool
+          /usr/local/bin/bpftool --version
+
+      - name: Generate vmlinux.h
+        run: /usr/local/bin/bpftool btf dump file /sys/kernel/btf/vmlinux format c > bpf/vmlinux.h
+
+      - name: Build eBPF programs
+        run: |
+          ARCH=$(uname -m | sed 's/x86_64/x86/' | sed 's/aarch64/arm64/')
+          clang -g -O2 -target bpf -D__TARGET_ARCH_${ARCH} \
+            -I./bpf/headers \
+            -I/usr/include/$(uname -m)-linux-gnu \
+            -include asm/types.h \
+            -c bpf/probe.c -o bpf/probe.bpf.o
+          clang -g -O2 -target bpf -D__TARGET_ARCH_${ARCH} \
+            -I./bpf/headers \
+            -I/usr/include/$(uname -m)-linux-gnu \
+            -include asm/types.h \
+            -c bpf/lsm.c -o bpf/lsm.bpf.o
+          /usr/local/bin/bpftool gen object bpf/vigil.bpf.o bpf/probe.bpf.o bpf/lsm.bpf.o
+
+      - name: Build vigil binary (amd64)
+        run: GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=${{ github.ref_name }}" -o vigil-linux-amd64 ./cmd/vigil
+
+      - name: Build vigil binary (arm64)
+        run: GOOS=linux GOARCH=arm64 go build -ldflags "-X main.version=${{ github.ref_name }}" -o vigil-linux-arm64 ./cmd/vigil
+
+      - name: Package release tarball
+        run: |
+          TAG=${{ github.ref_name }}
+          mkdir -p release/vigil-${TAG}
+          cp vigil-linux-amd64 release/vigil-${TAG}/vigil
+          cp bpf/vigil.bpf.o release/vigil-${TAG}/vigil.bpf.o
+          cp -r profiles release/vigil-${TAG}/profiles
+          cp install.sh release/vigil-${TAG}/install.sh
+          chmod +x release/vigil-${TAG}/install.sh
+          tar -czf vigil-${TAG}-linux-amd64.tar.gz -C release vigil-${TAG}
+          echo "TARBALL=vigil-${TAG}-linux-amd64.tar.gz" >> $GITHUB_ENV
+          echo "TAG=${TAG}" >> $GITHUB_ENV
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: vigil ${{ github.ref_name }}
+          body: |
+            ## Install
+
+            ```bash
+            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/install.sh | sudo bash
+            ```
+
+            Or download the tarball and run `sudo ./install.sh` manually.
+
+            ## What's included
+
+            - `vigil` — daemon binary
+            - `vigil.bpf.o` — eBPF object (CO-RE, works on any Linux kernel with BTF support)
+            - `profiles/` — built-in profiles for claude-code, gemini-cli, ollama
+
+            ## Requirements
+
+            - Linux x86_64, kernel ≥ 5.15 with `CONFIG_BPF_LSM=y`
+            - `lsm=bpf` in kernel boot parameters (see [setup guide](deploy/README.md))
+          files: |
+            ${{ env.TARBALL }}
+            vigil-linux-amd64
+            vigil-linux-arm64
+            bpf/vigil.bpf.o
+            install.sh
