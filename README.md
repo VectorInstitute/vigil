@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="assets/logo.svg" width="200" alt="vigil logo"/>
+</div>
+
 # vigil
 
 eBPF-based runtime security for AI inference workloads.
