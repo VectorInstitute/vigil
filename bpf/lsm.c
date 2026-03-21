@@ -35,6 +35,18 @@ struct {
     __type(value, __u8);
 } blocked_ipv4 SEC(".maps");
 
+// Per-cpu scratch buffer for normalising the bpf_d_path result.
+// bpf_d_path writes the string at the END of the on-stack buffer then
+// memmoves it to the front, leaving a copy of the string in the tail.
+// Using a second on-stack 256-byte buffer would exceed the 512-byte BPF
+// stack limit, so we keep the scratch buffer in a per-cpu map instead.
+struct {
+    __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+    __uint(max_entries, 1);
+    __type(key,   __u32);
+    __type(value, char[MAX_PATH_LEN]);
+} path_scratch SEC(".maps");
+
 // ── LSM: file_open ────────────────────────────────────────────────────────────
 
 // Runs before every file open. Returns -EPERM to deny.
@@ -46,13 +58,14 @@ int BPF_PROG(vigil_file_open, struct file *file) {
     if (bpf_d_path(&file->f_path, path, sizeof(path)) <= 0)
         return 0;
 
-    // bpf_d_path builds the string at the END of the buffer then memmoves it
-    // to the front, leaving a copy of the string in the tail.  The map keys
-    // are stored with zero padding after the null terminator.  Re-read the
-    // null-terminated result into a fresh zero-initialized buffer so the
-    // 256-byte hash key matches exactly what populateMaps stored.
-    char key[MAX_PATH_LEN] = {};
-    bpf_probe_read_kernel_str(key, sizeof(key), path);
+    // bpf_d_path leaves d_path leftovers in the tail of path[].
+    // Copy the null-terminated result into a per-cpu scratch buffer so the
+    // 256-byte hash key has zeros after the null, matching stored keys.
+    __u32 z = 0;
+    char *key = bpf_map_lookup_elem(&path_scratch, &z);
+    if (!key)
+        return 0;
+    bpf_probe_read_kernel_str(key, MAX_PATH_LEN, path);
 
     __u8 *blocked = bpf_map_lookup_elem(&blocked_paths, key);
     if (!blocked)
@@ -68,7 +81,7 @@ int BPF_PROG(vigil_file_open, struct file *file) {
     e->pid          = bpf_get_current_pid_tgid() >> 32;
     e->tgid         = (__u32)bpf_get_current_pid_tgid();
     bpf_get_current_comm(&e->comm, sizeof(e->comm));
-    __builtin_memcpy(e->path, key, sizeof(key));
+    __builtin_memcpy(e->path, key, MAX_PATH_LEN);
     bpf_ringbuf_submit(e, 0);
 
     return -1; // kernel maps -1 → -EPERM for LSM deny
@@ -119,9 +132,12 @@ int BPF_PROG(vigil_bprm_check, struct linux_binprm *bprm) {
     if (bpf_d_path(&bprm->file->f_path, path, sizeof(path)) <= 0)
         return 0;
 
-    // Same tail-cleanup as vigil_file_open: re-read into zero-padded key.
-    char key[MAX_PATH_LEN] = {};
-    bpf_probe_read_kernel_str(key, sizeof(key), path);
+    // Same tail-cleanup as vigil_file_open: use per-cpu scratch buffer.
+    __u32 z = 0;
+    char *key = bpf_map_lookup_elem(&path_scratch, &z);
+    if (!key)
+        return 0;
+    bpf_probe_read_kernel_str(key, MAX_PATH_LEN, path);
 
     __u8 *blocked = bpf_map_lookup_elem(&blocked_paths, key);
     if (!blocked)
@@ -137,7 +153,7 @@ int BPF_PROG(vigil_bprm_check, struct linux_binprm *bprm) {
     e->pid          = bpf_get_current_pid_tgid() >> 32;
     e->tgid         = (__u32)bpf_get_current_pid_tgid();
     bpf_get_current_comm(&e->comm, sizeof(e->comm));
-    __builtin_memcpy(e->path, key, sizeof(key));
+    __builtin_memcpy(e->path, key, MAX_PATH_LEN);
     bpf_ringbuf_submit(e, 0);
 
     return -1; // -EPERM
