@@ -22,11 +22,13 @@ bpf: $(VMLINUX_H)
 		-g -O2 -target bpf -D__TARGET_ARCH_$(ARCH) \
 		-I./bpf/headers \
 		-I/usr/include/$(shell uname -m)-linux-gnu \
+		-include asm/types.h \
 		-c bpf/probe.c -o bpf/probe.bpf.o
 	$(CLANG) \
 		-g -O2 -target bpf -D__TARGET_ARCH_$(ARCH) \
 		-I./bpf/headers \
 		-I/usr/include/$(shell uname -m)-linux-gnu \
+		-include asm/types.h \
 		-c bpf/lsm.c -o bpf/lsm.bpf.o
 	bpftool gen object $(BPF_OBJ) bpf/probe.bpf.o bpf/lsm.bpf.o
 

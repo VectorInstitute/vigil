@@ -1,0 +1,67 @@
+name: gemini-cli
+version: "1.0"
+description: Behavioral profile for Gemini CLI AI coding agent
+
+default_policy: allow
+
+denied_paths:
+  # Credential files
+  - /etc/shadow
+  - /etc/sudoers
+  - /etc/sudoers.d/**
+  - /root/.ssh/**
+  - /home/*/.ssh/**
+  - /proc/*/mem
+
+  # Cloud provider credentials
+  - /**/.aws/credentials
+  - /**/.aws/config
+  - /**/.gcp/**
+  - /**/.config/gcloud/**
+  - /run/secrets/**
+
+  # Crypto / GPG keys
+  - /**/.gnupg/**
+  - /**/.age/**
+
+  # Other agents' credentials
+  - /**/.anthropic/**
+  - /**/.config/claude/**
+
+allowed_paths:
+  - /home/**
+  - /tmp/**
+  - /usr/**
+  - /lib/**
+  - /lib64/**
+  - /opt/**
+  - /proc/self/**
+  - /proc/*/stat
+  - /proc/*/status
+  - /dev/null
+  - /dev/urandom
+  - /dev/random
+  - /etc/resolv.conf
+  - /etc/hosts
+  - /etc/hostname
+  - /etc/nsswitch.conf
+  - /etc/ssl/certs/**
+  - /etc/ca-certificates/**
+
+allowed_networks:
+  - 127.0.0.0/8
+  - ::1/128
+  - 0.0.0.0/0
+
+allowed_commands:
+  - gemini
+  - node
+  - git
+  - go
+  - python3
+  - python
+  - make
+  - gcc
+  - clang
+  - npm
+  - npx

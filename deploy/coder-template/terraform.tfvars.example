@@ -1,0 +1,12 @@
+project               = "agentic-ai-evaluation-bootcamp"
+region                = "us-central1"
+zone                  = "us-central1-a"
+gar_region            = "us-central1"
+machine_type          = "n2-standard-4"
+disk_size_gb          = 50
+container_image       = "us-central1-docker.pkg.dev/coderd/vigil/workspace:latest"
+service_account_email = "agentic-ai-evaluation-bootcamp@agentic-ai-evaluation-bootcamp.iam.gserviceaccount.com"
+github_app_id         = "primary-github"
+codeserver            = "true"
+vigil_repo            = "https://github.com/VectorInstitute/vigil.git"
+vigil_branch          = "main"

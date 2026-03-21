@@ -1,0 +1,20 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - deploy/docker/Dockerfile
+      - -t
+      - ${_REGION}-docker.pkg.dev/${_PROJECT}/vigil/workspace:latest
+      - .
+
+images:
+  - ${_REGION}-docker.pkg.dev/${_PROJECT}/vigil/workspace:latest
+
+substitutions:
+  _REGION: us-central1
+  _PROJECT: coderd
+
+options:
+  machineType: E2_HIGHCPU_8
+  logging: CLOUD_LOGGING_ONLY

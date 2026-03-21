@@ -78,5 +78,11 @@ See [`docs/architecture.html`](docs/architecture.html) for the full diagram.
 | Profile | Status |
 |---|---|
 | `ollama` | Available |
+| `claude-code` | Available |
+| `gemini-cli` | Available |
 | `vllm` | Coming soon |
 | `llamacpp` | Coming soon |
+
+## Demo
+
+See [`deploy/`](deploy/) for a Coder workspace template that provisions a Ubuntu VM with vigil, Claude Code, and Gemini CLI, and runs live jailbreak blocking scenarios.
