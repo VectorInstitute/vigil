@@ -43,10 +43,18 @@ struct {
 SEC("lsm/file_open")
 int BPF_PROG(vigil_file_open, struct file *file) {
     char path[MAX_PATH_LEN] = {};
-    int dpath_ret = bpf_d_path(&file->f_path, path, sizeof(path));
-    bpf_printk("vigil file_open: ret=%d path=[%s]\n", dpath_ret, path);
+    if (bpf_d_path(&file->f_path, path, sizeof(path)) <= 0)
+        return 0;
 
-    __u8 *blocked = bpf_map_lookup_elem(&blocked_paths, path);
+    // bpf_d_path builds the string at the END of the buffer then memmoves it
+    // to the front, leaving a copy of the string in the tail.  The map keys
+    // are stored with zero padding after the null terminator.  Re-read the
+    // null-terminated result into a fresh zero-initialized buffer so the
+    // 256-byte hash key matches exactly what populateMaps stored.
+    char key[MAX_PATH_LEN] = {};
+    bpf_probe_read_kernel_str(key, sizeof(key), path);
+
+    __u8 *blocked = bpf_map_lookup_elem(&blocked_paths, key);
     if (!blocked)
         return 0;
 
@@ -60,7 +68,7 @@ int BPF_PROG(vigil_file_open, struct file *file) {
     e->pid          = bpf_get_current_pid_tgid() >> 32;
     e->tgid         = (__u32)bpf_get_current_pid_tgid();
     bpf_get_current_comm(&e->comm, sizeof(e->comm));
-    __builtin_memcpy(e->path, path, sizeof(path));
+    __builtin_memcpy(e->path, key, sizeof(key));
     bpf_ringbuf_submit(e, 0);
 
     return -1; // kernel maps -1 → -EPERM for LSM deny
@@ -108,10 +116,14 @@ int BPF_PROG(vigil_socket_connect, struct socket *sock, struct sockaddr *address
 SEC("lsm/bprm_check_security")
 int BPF_PROG(vigil_bprm_check, struct linux_binprm *bprm) {
     char path[MAX_PATH_LEN] = {};
-    int dpath_ret = bpf_d_path(&bprm->file->f_path, path, sizeof(path));
-    bpf_printk("vigil bprm_check: ret=%d path=[%s]\n", dpath_ret, path);
+    if (bpf_d_path(&bprm->file->f_path, path, sizeof(path)) <= 0)
+        return 0;
 
-    __u8 *blocked = bpf_map_lookup_elem(&blocked_paths, path);
+    // Same tail-cleanup as vigil_file_open: re-read into zero-padded key.
+    char key[MAX_PATH_LEN] = {};
+    bpf_probe_read_kernel_str(key, sizeof(key), path);
+
+    __u8 *blocked = bpf_map_lookup_elem(&blocked_paths, key);
     if (!blocked)
         return 0;
 
@@ -125,7 +137,7 @@ int BPF_PROG(vigil_bprm_check, struct linux_binprm *bprm) {
     e->pid          = bpf_get_current_pid_tgid() >> 32;
     e->tgid         = (__u32)bpf_get_current_pid_tgid();
     bpf_get_current_comm(&e->comm, sizeof(e->comm));
-    __builtin_memcpy(e->path, path, sizeof(path));
+    __builtin_memcpy(e->path, key, sizeof(key));
     bpf_ringbuf_submit(e, 0);
 
     return -1; // -EPERM

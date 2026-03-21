@@ -155,16 +155,8 @@ jobs:
           export GOPROXY=off
           export GONOSUMCHECK=*
           cd ${WORKSPACE}
-          # Enable BPF tracing so bpf_printk output is captured.
-          echo 1 > /sys/kernel/debug/tracing/tracing_on 2>/dev/null || true
-          cat /sys/kernel/debug/tracing/trace_pipe > /tmp/bpf-trace.txt 2>/dev/null &
-          TRACE_PID=\$!
           go test -tags integration -v -count=1 ./test/e2e/
           RC=\$?
-          sleep 1
-          kill \$TRACE_PID 2>/dev/null || true
-          echo "=== BPF trace (last 80 lines) ==="
-          tail -80 /tmp/bpf-trace.txt 2>/dev/null || echo "(no trace output)"
           sync
           echo \$RC > /tmp/vm-exit-code
           sync
