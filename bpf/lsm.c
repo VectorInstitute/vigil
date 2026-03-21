@@ -58,14 +58,24 @@ int BPF_PROG(vigil_file_open, struct file *file) {
     if (bpf_d_path(&file->f_path, path, sizeof(path)) <= 0)
         return 0;
 
-    // bpf_d_path leaves d_path leftovers in the tail of path[].
-    // Copy the null-terminated result into a per-cpu scratch buffer so the
-    // 256-byte hash key has zeros after the null, matching stored keys.
+    // bpf_d_path internally builds the string at the END of path[] then
+    // memmoves it to the front, leaving a copy of the string in the tail.
+    // bpf_probe_read_kernel_str silently fails on BPF stack addresses,
+    // zeroing the destination and causing every map lookup to miss.
+    // Instead: pre-zero the per-cpu scratch buffer and copy byte-by-byte
+    // until '\0' so positions after the null stay zero — giving a clean
+    // 256-byte key that matches what populateMaps stored.
     __u32 z = 0;
     char *key = bpf_map_lookup_elem(&path_scratch, &z);
     if (!key)
         return 0;
-    bpf_probe_read_kernel_str(key, MAX_PATH_LEN, path);
+    __builtin_memset(key, 0, MAX_PATH_LEN);
+    for (int i = 0; i < MAX_PATH_LEN; i++) {
+        char c = path[i];
+        key[i] = c;
+        if (!c)
+            break;
+    }
 
     __u8 *blocked = bpf_map_lookup_elem(&blocked_paths, key);
     if (!blocked)
@@ -132,12 +142,18 @@ int BPF_PROG(vigil_bprm_check, struct linux_binprm *bprm) {
     if (bpf_d_path(&bprm->file->f_path, path, sizeof(path)) <= 0)
         return 0;
 
-    // Same tail-cleanup as vigil_file_open: use per-cpu scratch buffer.
+    // Same tail-cleanup as vigil_file_open: pre-zero scratch, copy until '\0'.
     __u32 z = 0;
     char *key = bpf_map_lookup_elem(&path_scratch, &z);
     if (!key)
         return 0;
-    bpf_probe_read_kernel_str(key, MAX_PATH_LEN, path);
+    __builtin_memset(key, 0, MAX_PATH_LEN);
+    for (int i = 0; i < MAX_PATH_LEN; i++) {
+        char c = path[i];
+        key[i] = c;
+        if (!c)
+            break;
+    }
 
     __u8 *blocked = bpf_map_lookup_elem(&blocked_paths, key);
     if (!blocked)
