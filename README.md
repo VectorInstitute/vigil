@@ -2,7 +2,7 @@
 
 eBPF-based runtime security for AI inference workloads.
 
-Vigil attaches to AI serving processes (Ollama, vLLM, llama.cpp) and enforces a behavioral profile at the kernel level — blocking unexpected file access, network connections, and subprocess spawning before they complete. No code changes required in the target process.
+Vigil attaches to AI serving processes (Ollama, vLLM, llama.cpp) and enforces a behavioral profile at the kernel level, blocking unexpected file access, network connections, and subprocess spawning before they complete. No code changes required in the target process.
 
 ## How it works
 
@@ -10,16 +10,16 @@ Vigil attaches to AI serving processes (Ollama, vLLM, llama.cpp) and enforces a 
 AI process (Ollama, vLLM, ...)
         │ syscalls
         ▼
-Linux Kernel — eBPF LSM hooks (file_open, socket_connect, bprm_check)
+Linux Kernel: eBPF LSM hooks (file_open, socket_connect, bprm_check)
         │ ring buffer events
         ▼
-vigil daemon — evaluates against profile → ALLOW / BLOCK
+vigil daemon: evaluates against profile → ALLOW / BLOCK
         │ JSON
         ▼
 Audit log / SIEM
 ```
 
-- **Kernel layer** (`bpf/`): tracepoints observe syscalls; LSM hooks enforce policy inline (`-EPERM`)
+- **Kernel layer** (`bpf/`): tracepoints observe syscalls; LSM hooks enforce policy inline
 - **Profiles** (`profiles/`): YAML files defining allowed paths, networks, and commands per framework
 - **Detector** (`internal/detector`): evaluates kernel events against the loaded profile
 - **Audit** (`internal/audit`): one JSON line per decision, stdout or file
@@ -52,7 +52,7 @@ sudo ./vigil watch --profile /path/to/custom.yaml
 
 ```json
 {"ts":"2026-01-01T00:00:00Z","pid":1234,"comm":"ollama","event":"file_open","path":"/etc/passwd","action":"BLOCK","reason":"matches denied path pattern"}
-{"ts":"2026-01-01T00:00:01Z","pid":1234,"comm":"ollama","event":"net_connect","dest_ip":"8.8.8.8","dest_port":443,"action":"BLOCK","reason":"default policy: deny — destination network not in allowlist"}
+{"ts":"2026-01-01T00:00:01Z","pid":1234,"comm":"ollama","event":"net_connect","dest_ip":"8.8.8.8","dest_port":443,"action":"BLOCK","reason":"default policy: deny, destination network not in allowlist"}
 ```
 
 ## Testing
