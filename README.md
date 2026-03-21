@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/logo.svg" width="200" alt="vigil logo"/>
+  <img src="assets/logo.svg" width="480" alt="vigil logo"/>
 </div>
 
 # vigil
