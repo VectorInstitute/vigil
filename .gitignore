@@ -1,0 +1,20 @@
+# Binary (root-level only)
+/vigil
+
+# eBPF build artifacts
+bpf/*.o
+bpf/vmlinux.h
+
+# Go
+*.test
+/vendor/
+
+# Test artifacts
+test/e2e/target/target
+
+# Editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo

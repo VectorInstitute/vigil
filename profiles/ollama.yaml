@@ -1,0 +1,71 @@
+name: ollama
+version: "1.0"
+description: Behavioral profile for Ollama LLM server
+
+# Default policy when no rule matches: deny is safest
+default_policy: deny
+
+# Denied paths are checked first (order matters)
+denied_paths:
+  - /etc/shadow
+  - /etc/passwd
+  - /etc/sudoers
+  - /etc/sudoers.d/**
+  - /root/.ssh/**
+  - /home/*/.ssh/**
+  - /proc/*/mem
+  - /**/.aws/**
+  - /**/.gnupg/**
+  # Shell and interpreter binaries — blocked to prevent prompt-injection → shell escape.
+  # On modern Ubuntu /bin → /usr/bin, so bpf_d_path returns the /usr/bin canonical path.
+  - /usr/bin/bash
+  - /usr/bin/sh
+  - /usr/bin/dash
+  - /usr/bin/python3
+  - /usr/bin/python3.*
+  - /bin/bash
+  - /bin/sh
+
+# Allowed paths (checked after denied)
+allowed_paths:
+  - /home/*/.ollama/**
+  - /root/.ollama/**
+  - /tmp/ollama*
+  - /tmp/.ollama*
+  - /var/tmp/ollama*
+  - /usr/local/lib/ollama/**
+  - /usr/local/bin/ollama
+  - /usr/lib/**
+  - /usr/share/**
+  - /lib/**
+  - /lib64/**
+  - /proc/self/**
+  - /proc/*/stat
+  - /proc/*/status
+  - /proc/*/maps
+  - /sys/fs/cgroup/**
+  - /sys/devices/system/cpu/**
+  - /dev/null
+  - /dev/urandom
+  - /dev/random
+  - /dev/shm/**
+  - /dev/nvidia*
+  - /dev/dri/**
+  - /etc/resolv.conf
+  - /etc/hosts
+  - /etc/nsswitch.conf
+  - /etc/ssl/certs/**
+  - /etc/ca-certificates/**
+  - /run/systemd/**
+  - /tmp/**
+
+# Allowed outbound network destinations (CIDR)
+allowed_networks:
+  - 127.0.0.0/8
+  - ::1/128
+
+# Allowed subprocess names (basename match)
+allowed_commands:
+  - ollama
+  - llama-runner
+  - ollama-runner

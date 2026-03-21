@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>vigil — Architecture</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      background: #0d1117;
+      color: #e6edf3;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 48px 24px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+
+    header h1 {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      color: #f0f6fc;
+    }
+
+    header h1 span {
+      color: #58a6ff;
+    }
+
+    header p {
+      margin-top: 8px;
+      font-size: 13px;
+      color: #8b949e;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    .diagram {
+      width: 100%;
+      max-width: 900px;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    /* ── Layer labels ── */
+    .layer-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: #8b949e;
+      margin-bottom: 8px;
+    }
+
+    /* ── Boxes ── */
+    .box {
+      border-radius: 8px;
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 600;
+      text-align: center;
+      line-height: 1.4;
+    }
+
+    /* ── AI Workloads layer ── */
+    .layer-ai {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 20px 24px;
+    }
+
+    .layer-ai .workloads {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .workload-pill {
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #c9d1d9;
+    }
+
+    /* ── Arrows ── */
+    .arrow-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 6px 0;
+      gap: 2px;
+    }
+
+    .arrow-label {
+      font-size: 10px;
+      color: #8b949e;
+      letter-spacing: 0.5px;
+    }
+
+    .arrow-down {
+      width: 1px;
+      height: 28px;
+      background: #30363d;
+      position: relative;
+    }
+
+    .arrow-down::after {
+      content: '';
+      position: absolute;
+      bottom: -5px;
+      left: -4px;
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-top: 6px solid #30363d;
+    }
+
+    /* ── Kernel layer ── */
+    .layer-kernel {
+      background: #0f1923;
+      border: 1px solid #1f4068;
+      border-radius: 12px;
+      padding: 20px 24px;
+    }
+
+    .layer-kernel-title {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #388bfd;
+      margin-bottom: 16px;
+      text-align: center;
+    }
+
+    .kernel-row {
+      display: grid;
+      grid-template-columns: 1fr 24px 1fr;
+      gap: 0;
+      align-items: stretch;
+    }
+
+    .kernel-box {
+      background: #161b22;
+      border: 1px solid #1f4068;
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .kernel-box h3 {
+      font-size: 12px;
+      font-weight: 700;
+      color: #58a6ff;
+      margin-bottom: 8px;
+    }
+
+    .kernel-box ul {
+      list-style: none;
+      font-size: 11px;
+      color: #8b949e;
+      line-height: 1.8;
+    }
+
+    .kernel-box ul li::before {
+      content: '→ ';
+      color: #388bfd;
+    }
+
+    .kernel-connector {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .h-arrow {
+      width: 24px;
+      height: 1px;
+      background: #1f4068;
+      position: relative;
+    }
+
+    .h-arrow::after {
+      content: '';
+      position: absolute;
+      right: -5px;
+      top: -4px;
+      border-top: 4px solid transparent;
+      border-bottom: 4px solid transparent;
+      border-left: 6px solid #1f4068;
+    }
+
+    .ring-buffer {
+      margin-top: 16px;
+      background: #161b22;
+      border: 1px solid #1f4068;
+      border-radius: 8px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .ring-buffer-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #58a6ff;
+      white-space: nowrap;
+    }
+
+    .ring-buffer-desc {
+      font-size: 11px;
+      color: #8b949e;
+    }
+
+    /* ── User space layer ── */
+    .layer-userspace {
+      background: #0f1a12;
+      border: 1px solid #1a4a2e;
+      border-radius: 12px;
+      padding: 20px 24px;
+    }
+
+    .layer-userspace-title {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #3fb950;
+      margin-bottom: 16px;
+      text-align: center;
+    }
+
+    .daemon-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+    }
+
+    .daemon-box {
+      background: #161b22;
+      border: 1px solid #1a4a2e;
+      border-radius: 8px;
+      padding: 14px 10px;
+      text-align: center;
+    }
+
+    .daemon-box h3 {
+      font-size: 11px;
+      font-weight: 700;
+      color: #3fb950;
+      margin-bottom: 6px;
+    }
+
+    .daemon-box p {
+      font-size: 10px;
+      color: #8b949e;
+      line-height: 1.5;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    .profiles-row {
+      margin-top: 10px;
+      background: #161b22;
+      border: 1px solid #1a4a2e;
+      border-radius: 8px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .profiles-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #3fb950;
+      white-space: nowrap;
+    }
+
+    .profile-pills {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .profile-pill {
+      font-size: 10px;
+      background: #1a4a2e;
+      border: 1px solid #238636;
+      border-radius: 4px;
+      padding: 3px 8px;
+      color: #56d364;
+    }
+
+    /* ── Output row ── */
+    .output-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .output-box {
+      background: #1a1209;
+      border: 1px solid #3d2b00;
+      border-radius: 8px;
+      padding: 14px 16px;
+    }
+
+    .output-box h3 {
+      font-size: 11px;
+      font-weight: 700;
+      color: #d29922;
+      margin-bottom: 6px;
+    }
+
+    .output-box p {
+      font-size: 10px;
+      color: #8b949e;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      line-height: 1.5;
+    }
+
+    .cli-cmds {
+      margin-top: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .cli-cmd {
+      font-size: 11px;
+      color: #d29922;
+      background: #21262d;
+      border-radius: 4px;
+      padding: 3px 8px;
+      display: inline-block;
+      width: fit-content;
+    }
+
+    /* ── Flow arrows between layers ── */
+    .flow-arrow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      padding: 4px 0;
+    }
+
+    .flow-line {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+
+    .flow-line .line {
+      width: 1px;
+      height: 22px;
+      position: relative;
+    }
+
+    .flow-line .line.down {
+      background: linear-gradient(to bottom, #388bfd44, #388bfd);
+    }
+
+    .flow-line .line.down::after {
+      content: '';
+      position: absolute;
+      bottom: -5px;
+      left: -3px;
+      border-left: 3px solid transparent;
+      border-right: 3px solid transparent;
+      border-top: 5px solid #388bfd;
+    }
+
+    .flow-line .line.up {
+      background: linear-gradient(to top, #f7853444, #f78534);
+    }
+
+    .flow-line .line.up::before {
+      content: '';
+      position: absolute;
+      top: -5px;
+      left: -3px;
+      border-left: 3px solid transparent;
+      border-right: 3px solid transparent;
+      border-bottom: 5px solid #f78534;
+    }
+
+    .flow-line .lbl {
+      font-size: 9px;
+      color: #8b949e;
+      letter-spacing: 0.3px;
+      white-space: nowrap;
+    }
+
+    .flow-separator {
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 48px;
+    }
+
+    .sep-arrow {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1px;
+    }
+
+    .sep-arrow .sa-line {
+      width: 1px;
+      height: 18px;
+      background: #30363d;
+      position: relative;
+    }
+
+    .sep-arrow .sa-line.down::after {
+      content: '';
+      position: absolute;
+      bottom: -4px;
+      left: -3px;
+      border-left: 3px solid transparent;
+      border-right: 3px solid transparent;
+      border-top: 5px solid #30363d;
+    }
+
+    .sep-arrow .sa-label {
+      font-size: 9px;
+      color: #484f58;
+      white-space: nowrap;
+    }
+
+    /* ── Legend ── */
+    .legend {
+      margin-top: 40px;
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      color: #8b949e;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+    }
+
+    .dot-kernel { background: #388bfd; }
+    .dot-userspace { background: #3fb950; }
+    .dot-output { background: #d29922; }
+    .dot-block { background: #f85149; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1><span>vigil</span></h1>
+  <p>eBPF-based runtime security for AI inference workloads</p>
+</header>
+
+<div class="diagram">
+
+  <!-- ── Layer 0: AI Workloads ── -->
+  <div class="layer-label">AI Workloads</div>
+  <div class="layer-ai">
+    <div class="workloads">
+      <div class="workload-pill">Ollama</div>
+      <div class="workload-pill">vLLM</div>
+      <div class="workload-pill">llama.cpp</div>
+      <div class="workload-pill">LiteLLM</div>
+      <div class="workload-pill">FastAPI + HF Transformers</div>
+    </div>
+  </div>
+
+  <!-- separator -->
+  <div class="flow-separator">
+    <div class="sep-arrow">
+      <div class="sa-label">syscalls</div>
+      <div class="sa-line down"></div>
+    </div>
+    <div class="sep-arrow">
+      <div class="sa-label">block decision ↑</div>
+      <div class="sa-line down" style="background: #f7853499; height:18px;"></div>
+    </div>
+  </div>
+
+  <!-- ── Layer 1: Kernel ── -->
+  <div class="layer-label">Linux Kernel</div>
+  <div class="layer-kernel">
+    <div class="layer-kernel-title">eBPF Programs (compiled C, embedded in binary)</div>
+
+    <div class="kernel-row">
+      <div class="kernel-box">
+        <h3>Syscall Probes</h3>
+        <ul>
+          <li>openat — file access</li>
+          <li>connect — outbound net</li>
+          <li>execve — process spawn</li>
+          <li>mmap — memory maps</li>
+        </ul>
+      </div>
+
+      <div class="kernel-connector">
+        <div class="h-arrow"></div>
+      </div>
+
+      <div class="kernel-box" style="border-color: #5a1d1d;">
+        <h3 style="color: #f85149;">LSM Hooks</h3>
+        <ul>
+          <li style="color: #8b949e;">security_file_open</li>
+          <li style="color: #8b949e;">security_socket_connect</li>
+          <li style="color: #8b949e;">security_bprm_check</li>
+          <li style="color: #f85149; font-weight:600;">→ BLOCK inline</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="ring-buffer">
+      <div class="ring-buffer-label">Ring Buffer</div>
+      <div class="ring-buffer-desc">lock-free kernel→userspace event stream · ~zero overhead · structured event records</div>
+    </div>
+  </div>
+
+  <!-- separator -->
+  <div class="flow-separator">
+    <div class="sep-arrow">
+      <div class="sa-label">events stream</div>
+      <div class="sa-line down"></div>
+    </div>
+    <div class="sep-arrow">
+      <div class="sa-label">block map ↑</div>
+      <div class="sa-line down" style="background: #f7853499;"></div>
+    </div>
+  </div>
+
+  <!-- ── Layer 2: User-space ── -->
+  <div class="layer-label">User-space Go Daemon</div>
+  <div class="layer-userspace">
+    <div class="layer-userspace-title">vigil daemon — single static binary</div>
+
+    <div class="daemon-grid">
+      <div class="daemon-box">
+        <h3>Process Detector</h3>
+        <p>Finds AI serving processes by name/cmdline. Auto-attaches eBPF probes on discovery.</p>
+      </div>
+      <div class="daemon-box">
+        <h3>Event Processor</h3>
+        <p>Consumes ring buffer. Parses and enriches events with PID, container ID, timestamp.</p>
+      </div>
+      <div class="daemon-box">
+        <h3>Anomaly Detector</h3>
+        <p>Compares events against loaded profile. Flags deviations above threshold.</p>
+      </div>
+      <div class="daemon-box">
+        <h3>Policy Enforcer</h3>
+        <p>Writes block decisions to eBPF map. LSM hook reads map synchronously to deny syscall.</p>
+      </div>
+    </div>
+
+    <div class="profiles-row">
+      <div class="profiles-label">Profile Store</div>
+      <div class="profile-pills">
+        <div class="profile-pill">ollama.yaml</div>
+        <div class="profile-pill">vllm.yaml</div>
+        <div class="profile-pill">llamacpp.yaml</div>
+        <div class="profile-pill">litellm.yaml</div>
+        <div class="profile-pill">custom.yaml</div>
+      </div>
+      <div style="font-size:10px; color:#8b949e; margin-left:auto; white-space:nowrap;">embedded in binary · overridable</div>
+    </div>
+  </div>
+
+  <!-- separator -->
+  <div class="flow-separator">
+    <div class="sep-arrow">
+      <div class="sa-label">JSON audit log</div>
+      <div class="sa-line down"></div>
+    </div>
+    <div class="sep-arrow">
+      <div class="sa-label">CLI commands</div>
+      <div class="sa-line down" style="background: #d2992299;"></div>
+    </div>
+  </div>
+
+  <!-- ── Layer 3: Output ── -->
+  <div class="layer-label">Output &amp; CLI</div>
+  <div class="output-row">
+    <div class="output-box">
+      <h3>Audit Logger</h3>
+      <p>Structured JSON to stdout, file, or syslog. Plug into any SIEM (Splunk, Elastic, Datadog).</p>
+      <div style="margin-top:8px; font-size:10px; color:#484f58;">{"ts":"...","pid":1234,"event":"connect","dst":"1.2.3.4","action":"BLOCKED","framework":"ollama"}</div>
+    </div>
+    <div class="output-box">
+      <h3>CLI</h3>
+      <div class="cli-cmds">
+        <span class="cli-cmd">vigil watch [--framework ollama]</span>
+        <span class="cli-cmd">vigil audit [--tail]</span>
+        <span class="cli-cmd">vigil profile list | show &lt;name&gt;</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Legend -->
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot dot-kernel"></div>Kernel / eBPF layer</div>
+  <div class="legend-item"><div class="legend-dot dot-userspace"></div>User-space daemon (Go)</div>
+  <div class="legend-item"><div class="legend-dot dot-output"></div>Output &amp; CLI</div>
+  <div class="legend-item"><div class="legend-dot dot-block"></div>Inline block path (LSM)</div>
+</div>
+
+</body>
+</html>
