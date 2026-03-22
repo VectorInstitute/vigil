@@ -7,8 +7,6 @@ linters:
     - govet         # go vet checks (shadow, printf, etc.)
     - staticcheck   # comprehensive static analysis (SA*, S*, QF*)
     - unused        # unused code
-    - gofmt         # formatting
-    - goimports     # import ordering
     - misspell      # common spelling mistakes in comments/strings
     - unconvert     # unnecessary type conversions
     - ineffassign   # assignments whose value is never used
@@ -25,3 +23,11 @@ linters:
       # functions intentionally skip error handling (ErrNotLinux is always returned).
       - path: loader_stub\.go
         linters: [errcheck, unused]
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    paths:
+      - vendor
