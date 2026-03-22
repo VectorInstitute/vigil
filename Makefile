@@ -1,14 +1,16 @@
 # vigil — eBPF-based runtime security for AI inference workloads
 # Requires: clang, llvm, libbpf-dev, linux-headers (Linux only for BPF targets)
 
-BINARY     := vigil
-BPF_SRC    := bpf/probe.c bpf/lsm.c
-BPF_OBJ    := bpf/vigil.bpf.o
-VMLINUX_H  := bpf/vmlinux.h
-CLANG      := clang
-ARCH       := $(shell uname -m | sed 's/x86_64/x86/' | sed 's/aarch64/arm64/')
+BINARY          := vigil
+BPF_SRC         := bpf/probe.c bpf/lsm.c
+BPF_OBJ         := bpf/vigil.bpf.o
+VMLINUX_H       := bpf/vmlinux.h
+CLANG           := clang
+CLANG_FORMAT    := clang-format
+GOLANGCI_LINT   := golangci-lint
+ARCH            := $(shell uname -m | sed 's/x86_64/x86/' | sed 's/aarch64/arm64/')
 
-.PHONY: all build bpf test test-unit test-integration clean generate
+.PHONY: all build bpf test test-unit test-integration lint lint-go lint-c fmt fmt-go fmt-c clean generate
 
 all: bpf build
 
@@ -46,6 +48,28 @@ test-integration: bpf
 
 ## test: run unit tests only (safe on all platforms)
 test: test-unit
+
+## lint: run all linters (Go + C)
+lint: lint-go lint-c
+
+## lint-go: run golangci-lint on Go sources
+lint-go:
+	$(GOLANGCI_LINT) run ./...
+
+## lint-c: check BPF C sources with clang-format (diff mode — no writes)
+lint-c:
+	$(CLANG_FORMAT) --dry-run --Werror bpf/probe.c bpf/lsm.c bpf/headers/common.h
+
+## fmt: format all sources in place
+fmt: fmt-go fmt-c
+
+## fmt-go: format Go sources with gofmt
+fmt-go:
+	gofmt -w $$(find . -name '*.go' -not -path './vendor/*')
+
+## fmt-c: format BPF C sources in place with clang-format
+fmt-c:
+	$(CLANG_FORMAT) -i bpf/probe.c bpf/lsm.c bpf/headers/common.h
 
 ## clean: remove built artifacts
 clean:

@@ -10,6 +10,39 @@ permissions:
   contents: read
 
 jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: gofmt check
+        run: |
+          unformatted=$(gofmt -l $(find . -name '*.go' -not -path './vendor/*'))
+          if [ -n "$unformatted" ]; then
+            echo "The following files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+
+      - name: clang-format check
+        run: |
+          sudo apt-get install -y clang-format
+          clang-format --dry-run --Werror bpf/probe.c bpf/lsm.c bpf/headers/common.h
+
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest
@@ -37,6 +70,3 @@ jobs:
 
       - name: Build binary
         run: go build ./cmd/vigil/
-
-      - name: Vet
-        run: go vet ./...

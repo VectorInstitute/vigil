@@ -29,13 +29,13 @@ import (
 // so "LsmFileOpen" would look for "LsmFileOpen" not "vigil_file_open".
 type objects struct {
 	// Maps
-	Events      *ebpf.Map `ebpf:"events"`
-	SSLEvents   *ebpf.Map `ebpf:"ssl_events"`
-	SSLReadArgs *ebpf.Map `ebpf:"ssl_read_args"`
+	Events       *ebpf.Map `ebpf:"events"`
+	SSLEvents    *ebpf.Map `ebpf:"ssl_events"`
+	SSLReadArgs  *ebpf.Map `ebpf:"ssl_read_args"`
 	BlockedPaths *ebpf.Map `ebpf:"blocked_paths"`
-	BlockedIPv4 *ebpf.Map `ebpf:"blocked_ipv4"`
-	EntryComm   *ebpf.Map `ebpf:"entry_comm"`   // agent root process comm
-	WatchedPids *ebpf.Map `ebpf:"watched_pids"` // agent process tree PIDs
+	BlockedIPv4  *ebpf.Map `ebpf:"blocked_ipv4"`
+	EntryComm    *ebpf.Map `ebpf:"entry_comm"`   // agent root process comm
+	WatchedPids  *ebpf.Map `ebpf:"watched_pids"` // agent process tree PIDs
 
 	// Observation tracepoints
 	TraceOpenat  *ebpf.Program `ebpf:"trace_openat"`
@@ -53,9 +53,9 @@ type objects struct {
 	LsmBprmCheck     *ebpf.Program `ebpf:"vigil_bprm_check"`
 
 	// SSL uprobes
-	UprobeSSLWrite      *ebpf.Program `ebpf:"uprobe_ssl_write"`
-	UprobeSSLReadEntry  *ebpf.Program `ebpf:"uprobe_ssl_read_entry"`
-	UretprobeSSLRead    *ebpf.Program `ebpf:"uretprobe_ssl_read"`
+	UprobeSSLWrite     *ebpf.Program `ebpf:"uprobe_ssl_write"`
+	UprobeSSLReadEntry *ebpf.Program `ebpf:"uprobe_ssl_read_entry"`
+	UretprobeSSLRead   *ebpf.Program `ebpf:"uretprobe_ssl_read"`
 }
 
 // Loader attaches eBPF programs to the kernel and streams events.
@@ -510,7 +510,7 @@ func decodeEvent(raw []byte, bootWall time.Time) (events.Event, error) {
 	var e events.Event
 	tsNs := binary.LittleEndian.Uint64(raw[0:8])
 	e.Timestamp = bootWall.Add(time.Duration(tsNs))
-	e.PID  = binary.LittleEndian.Uint32(raw[8:12])
+	e.PID = binary.LittleEndian.Uint32(raw[8:12])
 	// tgid at [12:16] — unused by caller
 	e.PPID = binary.LittleEndian.Uint32(raw[16:20])
 	e.Type = events.Type(raw[20])
@@ -552,12 +552,12 @@ func decodeSSLEvent(raw []byte, bootWall time.Time) (events.Event, error) {
 	e.Type = events.SSLData
 	tsNs := binary.LittleEndian.Uint64(raw[0:8])
 	e.Timestamp = bootWall.Add(time.Duration(tsNs))
-	e.PID  = binary.LittleEndian.Uint32(raw[8:12])
+	e.PID = binary.LittleEndian.Uint32(raw[8:12])
 	// tgid at [12:16]
-	e.PPID      = binary.LittleEndian.Uint32(raw[16:20])
+	e.PPID = binary.LittleEndian.Uint32(raw[16:20])
 	e.Direction = events.SSLDirection(raw[20])
-	e.Comm      = nullStr(raw[24:40])
-	dataLen    := binary.LittleEndian.Uint32(raw[40:44])
+	e.Comm = nullStr(raw[24:40])
+	dataLen := binary.LittleEndian.Uint32(raw[40:44])
 	if dataLen > 4096 {
 		dataLen = 4096
 	}

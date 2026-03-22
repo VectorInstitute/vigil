@@ -1,0 +1,30 @@
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - errcheck      # unchecked errors
+    - govet         # go vet checks (shadow, printf, etc.)
+    - staticcheck   # comprehensive static analysis (SA*, S*, QF*)
+    - unused        # unused code
+    - gofmt         # formatting
+    - goimports     # import ordering
+    - misspell      # common spelling mistakes in comments/strings
+    - unconvert     # unnecessary type conversions
+    - ineffassign   # assignments whose value is never used
+
+linters-settings:
+  govet:
+    enable-all: true
+    disable:
+      - fieldalignment  # struct field ordering optimisation — informational only
+
+issues:
+  # Don't report generated or vendored files.
+  exclude-dirs:
+    - vendor
+  # The loader stub exists only to satisfy the macOS build; its single-line
+  # functions intentionally skip error handling (ErrNotLinux is always returned).
+  exclude-rules:
+    - path: loader_stub\.go
+      linters: [errcheck, unused]

@@ -1,0 +1,17 @@
+# clang-format config for vigil's eBPF C programs (bpf/*.c, bpf/headers/*.h).
+# Based on Linux kernel style, which is the de-facto standard for BPF code.
+BasedOnStyle: LLVM
+IndentWidth: 4
+TabWidth: 4
+UseTab: ForIndentation
+BreakBeforeBraces: Linux
+AllowShortIfStatementsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: None
+AllowShortLoopsOnASingleLine: false
+IndentCaseLabels: false
+ColumnLimit: 100
+SpaceBeforeParens: ControlStatements
+PointerAlignment: Right
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+SortIncludes: false
