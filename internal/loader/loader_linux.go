@@ -15,6 +15,7 @@ import (
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/cilium/ebpf/rlimit"
+	"golang.org/x/sys/unix"
 )
 
 
@@ -36,9 +37,10 @@ type objects struct {
 
 // Loader attaches eBPF programs to the kernel and streams events.
 type Loader struct {
-	objs   objects
-	links  []link.Link
-	reader *ringbuf.Reader
+	objs         objects
+	links        []link.Link
+	reader       *ringbuf.Reader
+	bootWallTime time.Time // wall-clock time at system boot, for timestamp conversion
 }
 
 // Load removes the memlock limit, loads eBPF objects from the embedded .o file,
@@ -58,7 +60,7 @@ func Load(p *profiles.Profile, objPath string) (*Loader, error) {
 		return nil, fmt.Errorf("loading BPF objects: %w", err)
 	}
 
-	l := &Loader{objs: objs}
+	l := &Loader{objs: objs, bootWallTime: bootWallTime()}
 	if err := l.populateMaps(p); err != nil {
 		_ = l.Close()
 		return nil, fmt.Errorf("populating BPF maps: %w", err)
@@ -145,7 +147,7 @@ func (l *Loader) ReadEvent() (events.Event, error) {
 	if err != nil {
 		return events.Event{}, err
 	}
-	return decodeEvent(rec.RawSample)
+	return decodeEvent(rec.RawSample, l.bootWallTime)
 }
 
 // Close detaches all hooks, closes maps, and frees resources.
@@ -196,14 +198,14 @@ func pathKey(path string) [256]byte {
 
 // decodeEvent parses the raw bytes from the ring buffer into an events.Event.
 // Layout must match struct event in bpf/headers/common.h.
-func decodeEvent(raw []byte) (events.Event, error) {
+func decodeEvent(raw []byte, bootWall time.Time) (events.Event, error) {
 	if len(raw) < 32 {
 		return events.Event{}, fmt.Errorf("raw event too short: %d bytes", len(raw))
 	}
 
 	var e events.Event
 	tsNs := binary.LittleEndian.Uint64(raw[0:8])
-	e.Timestamp = timeFromNs(tsNs)
+	e.Timestamp = bootWall.Add(time.Duration(tsNs))
 	e.PID = binary.LittleEndian.Uint32(raw[8:12])
 	// tgid at [12:16] — unused by caller
 	e.Type = events.Type(raw[16])
@@ -232,6 +234,15 @@ func nullStr(b []byte) string {
 	return string(b)
 }
 
-func timeFromNs(ns uint64) time.Time {
-	return time.Unix(0, int64(ns))
+// bootWallTime returns the wall-clock time at which the system booted by
+// subtracting the current CLOCK_MONOTONIC reading from the current wall time.
+// bpf_ktime_get_ns() returns nanoseconds since boot on the same monotonic
+// clock, so: eventWallTime = bootWallTime + eventMonotonicNs.
+func bootWallTime() time.Time {
+	var ts unix.Timespec
+	if err := unix.ClockGettime(unix.CLOCK_MONOTONIC, &ts); err != nil {
+		// Fallback: assume boot was now (timestamps will be relative to start).
+		return time.Now()
+	}
+	return time.Now().Add(-time.Duration(ts.Nano()))
 }
