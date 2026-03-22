@@ -75,7 +75,7 @@ resource "coder_agent" "main" {
     # Start vigil with the web UI on port 7394 in background
     # Default to claude-code profile; user can restart with a different one.
     sudo vigil watch \
-      --profile /usr/lib/vigil/profiles/claude-code.yaml \
+      --profile /usr/lib/vigil/profiles/gemini-cli.yaml \
       --ui --port 7394 \
       >> /tmp/vigil-watch.log 2>&1 &
     echo "vigil started — UI on port 7394"

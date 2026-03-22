@@ -85,6 +85,9 @@ func runWatch(cmd *cobra.Command, _ []string) error {
 			return fmt.Errorf("reading event: %w", err)
 		}
 		dec := det.Evaluate(e)
+		if dec.Action == detector.Skip {
+			continue
+		}
 		if dec.Action == detector.Block {
 			_ = l.BlockIP(e.DestIP) // add to kernel block map for future connections
 		}

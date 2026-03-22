@@ -37,6 +37,10 @@ type Profile struct {
 	// DefaultPolicy is applied when no rule matches ("allow" or "deny").
 	DefaultPolicy string `yaml:"default_policy"`
 
+	// WatchedComms restricts event collection to the listed process names
+	// (kernel comm, max 15 chars). If empty, all processes are watched.
+	WatchedComms []string `yaml:"watched_comms"`
+
 	DeniedPaths     []string `yaml:"denied_paths"`
 	AllowedPaths    []string `yaml:"allowed_paths"`
 	AllowedNetworks []string `yaml:"allowed_networks"`
@@ -57,6 +61,20 @@ func (p *Profile) compile() error {
 		p.allowedNets = append(p.allowedNets, ipNet)
 	}
 	return nil
+}
+
+// WatchComm reports whether events from a process named comm should be
+// processed. If WatchedComms is empty, all processes are watched.
+func (p *Profile) WatchComm(comm string) bool {
+	if len(p.WatchedComms) == 0 {
+		return true
+	}
+	for _, c := range p.WatchedComms {
+		if c == comm {
+			return true
+		}
+	}
+	return false
 }
 
 // DefaultDeny reports whether the default policy is to deny unmatched actions.

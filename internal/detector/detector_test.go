@@ -137,4 +137,60 @@ func TestEvaluate_UnknownEventType_PassThrough(t *testing.T) {
 func TestAction_String(t *testing.T) {
 	assert.Equal(t, "ALLOW", detector.Allow.String())
 	assert.Equal(t, "BLOCK", detector.Block.String())
+	assert.Equal(t, "SKIP", detector.Skip.String())
+}
+
+// ── watched_comms filtering ───────────────────────────────────────────────────
+
+func TestEvaluate_SkipsUnwatchedProcess(t *testing.T) {
+	p, err := profiles.LoadBytes([]byte(`
+name: test
+default_policy: deny
+watched_comms: [node, bun]
+`))
+	require.NoError(t, err)
+	d := detector.New(p)
+
+	e := evt(events.FileOpen)
+	e.Comm = "systemd"
+	e.Path = "/etc/shadow"
+	dec := d.Evaluate(e)
+	assert.Equal(t, detector.Skip, dec.Action, "unwatched process must be skipped, not blocked")
+}
+
+func TestEvaluate_WatchedProcessEvaluatesNormally(t *testing.T) {
+	p, err := profiles.LoadBytes([]byte(`
+name: test
+default_policy: deny
+watched_comms: [node, bun]
+denied_paths:
+  - /etc/shadow
+`))
+	require.NoError(t, err)
+	d := detector.New(p)
+
+	e := evt(events.FileOpen)
+	e.Comm = "node"
+	e.Path = "/etc/shadow"
+	dec := d.Evaluate(e)
+	assert.Equal(t, detector.Block, dec.Action)
+}
+
+func TestEvaluate_EmptyWatchedComms_WatchesAll(t *testing.T) {
+	p, err := profiles.LoadBytes([]byte(`
+name: test
+default_policy: deny
+denied_paths:
+  - /etc/shadow
+`))
+	require.NoError(t, err)
+	d := detector.New(p)
+
+	for _, comm := range []string{"systemd", "node", "sshd", "anything"} {
+		e := evt(events.FileOpen)
+		e.Comm = comm
+		e.Path = "/etc/shadow"
+		dec := d.Evaluate(e)
+		assert.Equal(t, detector.Block, dec.Action, "empty watched_comms must watch all processes (%s)", comm)
+	}
 }

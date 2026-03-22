@@ -4,6 +4,11 @@ description: Behavioral profile for Gemini CLI AI coding agent
 
 default_policy: allow
 
+# Only surface events from the Gemini CLI process (runs on Node.js)
+watched_comms:
+  - gemini
+  - node
+
 denied_paths:
   # Credential files
   - /etc/shadow

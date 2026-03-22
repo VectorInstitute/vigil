@@ -154,6 +154,38 @@ allowed_paths:
 	assert.Equal(t, profiles.VerdictAllow, p.MatchPath("/etc/hosts"))
 }
 
+// ── watched_comms ─────────────────────────────────────────────────────────────
+
+func TestWatchComm_EmptyListWatchesAll(t *testing.T) {
+	p, err := profiles.LoadBytes([]byte(`name: test`))
+	require.NoError(t, err)
+	for _, comm := range []string{"node", "systemd", "anything"} {
+		assert.True(t, p.WatchComm(comm), "empty watched_comms should watch %s", comm)
+	}
+}
+
+func TestWatchComm_MatchesListed(t *testing.T) {
+	p, err := profiles.LoadBytes([]byte(`
+name: test
+watched_comms: [node, bun, gemini]
+`))
+	require.NoError(t, err)
+	assert.True(t, p.WatchComm("node"))
+	assert.True(t, p.WatchComm("bun"))
+	assert.True(t, p.WatchComm("gemini"))
+}
+
+func TestWatchComm_RejectsUnlisted(t *testing.T) {
+	p, err := profiles.LoadBytes([]byte(`
+name: test
+watched_comms: [node, bun]
+`))
+	require.NoError(t, err)
+	for _, comm := range []string{"systemd", "sshd", "dockerd", "cron"} {
+		assert.False(t, p.WatchComm(comm), "should not watch %s", comm)
+	}
+}
+
 // ── Command matching ─────────────────────────────────────────────────────────
 
 func TestMatchCommand_AllowedRunners(t *testing.T) {

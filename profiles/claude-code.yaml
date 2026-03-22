@@ -6,6 +6,12 @@ description: Behavioral profile for Claude Code AI coding agent
 # legitimate coding tasks. Vigil enforces a hard deny list for sensitive resources.
 default_policy: allow
 
+# Only surface events from the Claude Code process (runs on Bun; comm is "bun" or "node")
+watched_comms:
+  - bun
+  - node
+  - claude
+
 # Denied paths — kernel blocks these before the open() completes
 denied_paths:
   # Credential files

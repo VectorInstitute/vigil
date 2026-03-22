@@ -11,13 +11,18 @@ type Action int
 const (
 	Allow Action = iota
 	Block
+	Skip // event is from a non-watched process — discard silently
 )
 
 func (a Action) String() string {
-	if a == Allow {
+	switch a {
+	case Allow:
 		return "ALLOW"
+	case Block:
+		return "BLOCK"
+	default:
+		return "SKIP"
 	}
-	return "BLOCK"
 }
 
 // Decision pairs an event with its enforcement action and human-readable reason.
@@ -38,7 +43,11 @@ func New(p *profiles.Profile) *Detector {
 }
 
 // Evaluate returns the enforcement decision for a single kernel event.
+// Returns Skip if the event's process is not in the profile's watched_comms list.
 func (d *Detector) Evaluate(e events.Event) Decision {
+	if !d.profile.WatchComm(e.Comm) {
+		return Decision{Event: e, Action: Skip, Reason: "not a watched process"}
+	}
 	switch e.Type {
 	case events.FileOpen, events.Exec:
 		return d.evaluatePath(e)
