@@ -102,6 +102,8 @@ int BPF_PROG(vigil_file_open, struct file *file) {
     if (!blocked)
         return 0;
 
+    struct task_struct *task = (struct task_struct *)bpf_get_current_task();
+
     struct event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
     if (!e)
         return -1;
@@ -111,6 +113,7 @@ int BPF_PROG(vigil_file_open, struct file *file) {
     e->action       = ACTION_BLOCK;
     e->pid          = pid;
     e->tgid         = (__u32)bpf_get_current_pid_tgid();
+    e->ppid         = BPF_CORE_READ(task, real_parent, tgid);
     bpf_get_current_comm(&e->comm, sizeof(e->comm));
     __builtin_memcpy(e->path, key, MAX_PATH_LEN);
     bpf_ringbuf_submit(e, 0);
@@ -136,6 +139,8 @@ int BPF_PROG(vigil_socket_connect, struct socket *sock, struct sockaddr *address
     if (!blocked)
         return 0;
 
+    struct task_struct *task = (struct task_struct *)bpf_get_current_task();
+
     struct event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
     if (!e)
         return -1;
@@ -145,6 +150,7 @@ int BPF_PROG(vigil_socket_connect, struct socket *sock, struct sockaddr *address
     e->action       = ACTION_BLOCK;
     e->pid          = pid;
     e->tgid         = (__u32)bpf_get_current_pid_tgid();
+    e->ppid         = BPF_CORE_READ(task, real_parent, tgid);
     e->dest_ip4     = dest_ip;
     e->dest_port    = bpf_ntohs(BPF_CORE_READ(sin, sin_port));
     bpf_get_current_comm(&e->comm, sizeof(e->comm));
@@ -181,6 +187,8 @@ int BPF_PROG(vigil_bprm_check, struct linux_binprm *bprm) {
     if (!blocked)
         return 0;
 
+    struct task_struct *task = (struct task_struct *)bpf_get_current_task();
+
     struct event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
     if (!e)
         return -1;
@@ -190,6 +198,7 @@ int BPF_PROG(vigil_bprm_check, struct linux_binprm *bprm) {
     e->action       = ACTION_BLOCK;
     e->pid          = pid;
     e->tgid         = (__u32)bpf_get_current_pid_tgid();
+    e->ppid         = BPF_CORE_READ(task, real_parent, tgid);
     bpf_get_current_comm(&e->comm, sizeof(e->comm));
     __builtin_memcpy(e->path, key, MAX_PATH_LEN);
     bpf_ringbuf_submit(e, 0);

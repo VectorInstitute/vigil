@@ -131,6 +131,7 @@ func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
 type eventRecord struct {
 	TS       string   `json:"ts"`
 	PID      uint32   `json:"pid"`
+	PPID     uint32   `json:"ppid,omitempty"`
 	Comm     string   `json:"comm"`
 	Event    string   `json:"event"`
 	Action   string   `json:"action"`
@@ -139,6 +140,8 @@ type eventRecord struct {
 	Argv     []string `json:"argv,omitempty"`
 	DestIP   string   `json:"dest_ip,omitempty"`
 	DestPort uint16   `json:"dest_port,omitempty"`
+	SSLDir   string   `json:"ssl_dir,omitempty"`
+	SSLData  string   `json:"ssl_data,omitempty"`
 }
 
 func toRecord(dec detector.Decision) eventRecord {
@@ -146,6 +149,7 @@ func toRecord(dec detector.Decision) eventRecord {
 	r := eventRecord{
 		TS:     e.Timestamp.UTC().Format(time.RFC3339),
 		PID:    e.PID,
+		PPID:   e.PPID,
 		Comm:   e.Comm,
 		Event:  e.Type.String(),
 		Action: dec.Action.String(),
@@ -160,6 +164,13 @@ func toRecord(dec detector.Decision) eventRecord {
 			r.DestIP = e.DestIP.String()
 		}
 		r.DestPort = e.DestPort
+	case events.SSLData:
+		r.SSLDir = e.Direction.String()
+		data := e.Data
+		if len(data) > 512 {
+			data = data[:512] + "…"
+		}
+		r.SSLData = data
 	}
 	return r
 }

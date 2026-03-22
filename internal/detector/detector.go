@@ -53,6 +53,8 @@ func (d *Detector) Evaluate(e events.Event) Decision {
 		return d.evaluatePath(e)
 	case events.NetConnect:
 		return d.evaluateNetwork(e)
+	case events.SSLData:
+		return Decision{Event: e, Action: Allow, Reason: "ssl capture — observation only"}
 	default:
 		return Decision{Event: e, Action: Allow, Reason: "unknown event type — pass through"}
 	}

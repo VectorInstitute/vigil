@@ -18,23 +18,19 @@ struct {
     __uint(max_entries, 1 << 24); // 16 MB
 } events SEC(".maps");
 
-// Deny-list: path prefixes to block (populated by Go daemon from profile)
-// Key: null-terminated path prefix (up to MAX_PATH_LEN), Value: 1
+// SSL events ring buffer: kernel → userspace SSL payload stream
 struct {
-    __uint(type, BPF_MAP_TYPE_HASH);
-    __uint(max_entries, 256);
-    __type(key,   char[MAX_PATH_LEN]);
-    __type(value, __u8);
-} denied_path_prefixes SEC(".maps");
+    __uint(type, BPF_MAP_TYPE_RINGBUF);
+    __uint(max_entries, 1 << 24); // 16 MB
+} ssl_events SEC(".maps");
 
-// Deny-list: IPv4 addresses to block (populated by Go daemon)
-// Key: __u32 in network byte order, Value: 1
+// ssl_read_args: saves SSL_read buf pointer at entry, keyed by TID
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
-    __uint(max_entries, 256);
-    __type(key,   __u32);
-    __type(value, __u8);
-} denied_ipv4 SEC(".maps");
+    __uint(max_entries, 1024);
+    __type(key,   __u32);  // TID
+    __type(value, __u64);  // buf pointer
+} ssl_read_args SEC(".maps");
 
 // ── Process lineage maps ──────────────────────────────────────────────────────
 
@@ -176,11 +172,14 @@ int trace_openat(struct trace_event_raw_sys_enter *ctx) {
     if (!pid_is_watched(pid))
         return 0;
 
+    struct task_struct *task = (struct task_struct *)bpf_get_current_task();
+
     struct event e = {};
     e.event_type = EVENT_FILE_OPEN;
     e.action     = ACTION_ALLOW; // LSM hook will override to BLOCK if needed
     e.pid        = pid;
     e.tgid       = (__u32)id;
+    e.ppid       = BPF_CORE_READ(task, real_parent, tgid);
     bpf_get_current_comm(&e.comm, sizeof(e.comm));
 
     // ctx->args[1] is the filename pointer for openat
@@ -198,11 +197,14 @@ int trace_execve(struct trace_event_raw_sys_enter *ctx) {
     if (!pid_is_watched(pid))
         return 0;
 
+    struct task_struct *task = (struct task_struct *)bpf_get_current_task();
+
     struct event e = {};
     e.event_type = EVENT_EXEC;
     e.action     = ACTION_ALLOW;
     e.pid        = pid;
     e.tgid       = (__u32)id;
+    e.ppid       = BPF_CORE_READ(task, real_parent, tgid);
     bpf_get_current_comm(&e.comm, sizeof(e.comm));
     bpf_probe_read_user_str(e.path, sizeof(e.path), (const void *)ctx->args[0]);
 
@@ -218,11 +220,14 @@ int trace_connect(struct trace_event_raw_sys_enter *ctx) {
     if (!pid_is_watched(pid))
         return 0;
 
+    struct task_struct *task = (struct task_struct *)bpf_get_current_task();
+
     struct event e = {};
     e.event_type = EVENT_NET_CONNECT;
     e.action     = ACTION_ALLOW;
     e.pid        = pid;
     e.tgid       = (__u32)id;
+    e.ppid       = BPF_CORE_READ(task, real_parent, tgid);
     bpf_get_current_comm(&e.comm, sizeof(e.comm));
 
     // ctx->args[1] is struct sockaddr * (user pointer)
@@ -236,11 +241,6 @@ int trace_connect(struct trace_event_raw_sys_enter *ctx) {
         e.dest_port = bpf_ntohs(sin.sin_port);
         e.is_ipv6   = 0;
 
-        // Check deny list
-        __u8 *blocked = bpf_map_lookup_elem(&denied_ipv4, &e.dest_ip4);
-        if (blocked)
-            e.action = ACTION_BLOCK;
-
     } else if (sa.sa_family == AF_INET6) {
         struct sockaddr_in6 sin6 = {};
         bpf_probe_read_user(&sin6, sizeof(sin6), (const void *)ctx->args[1]);
@@ -250,5 +250,99 @@ int trace_connect(struct trace_event_raw_sys_enter *ctx) {
     }
 
     emit_event(&e);
+    return 0;
+}
+
+// ── SSL/TLS uprobes ───────────────────────────────────────────────────────────
+
+// uprobe_ssl_write: fires at SSL_write entry.
+// Captures the plaintext buffer being written (sent to LLM API).
+SEC("uprobe")
+int uprobe_ssl_write(struct pt_regs *ctx) {
+    __u64 id  = bpf_get_current_pid_tgid();
+    __u32 pid = id >> 32;
+    if (!pid_is_watched(pid))
+        return 0;
+
+    void *buf = (void *)PT_REGS_PARM2(ctx);
+    int   num = (int)PT_REGS_PARM3(ctx);
+    if (num <= 0 || !buf)
+        return 0;
+
+    struct task_struct *task = (struct task_struct *)bpf_get_current_task();
+
+    struct ssl_event *e = bpf_ringbuf_reserve(&ssl_events, sizeof(*e), 0);
+    if (!e)
+        return 0;
+    __builtin_memset(e, 0, sizeof(*e));
+    e->timestamp_ns = bpf_ktime_get_ns();
+    e->pid       = pid;
+    e->tgid      = (__u32)id;
+    e->ppid      = BPF_CORE_READ(task, real_parent, tgid);
+    e->direction = SSL_DIRECTION_SEND;
+    bpf_get_current_comm(&e->comm, sizeof(e->comm));
+
+    __u32 to_copy = num < MAX_SSL_BUF ? (__u32)num : MAX_SSL_BUF;
+    e->data_len = to_copy;
+    bpf_probe_read_user(e->data, to_copy, buf);
+
+    bpf_ringbuf_submit(e, 0);
+    return 0;
+}
+
+// uprobe_ssl_read_entry: fires at SSL_read entry.
+// Saves the user-supplied buffer pointer for use in the return probe.
+SEC("uprobe")
+int uprobe_ssl_read_entry(struct pt_regs *ctx) {
+    __u64 id  = bpf_get_current_pid_tgid();
+    __u32 pid = id >> 32;
+    if (!pid_is_watched(pid))
+        return 0;
+
+    __u32 tid  = (__u32)id;
+    __u64 buf  = PT_REGS_PARM2(ctx);
+    bpf_map_update_elem(&ssl_read_args, &tid, &buf, BPF_ANY);
+    return 0;
+}
+
+// uretprobe_ssl_read: fires at SSL_read return.
+// Reads the plaintext data that was received (response from LLM API).
+SEC("uretprobe")
+int uretprobe_ssl_read(struct pt_regs *ctx) {
+    __u64 id  = bpf_get_current_pid_tgid();
+    __u32 pid = id >> 32;
+    __u32 tid  = (__u32)id;
+
+    __u64 *buf_ptr = bpf_map_lookup_elem(&ssl_read_args, &tid);
+    if (!buf_ptr)
+        return 0;
+    __u64 buf = *buf_ptr;
+    bpf_map_delete_elem(&ssl_read_args, &tid);
+
+    int retval = (int)PT_REGS_RC(ctx);
+    if (retval <= 0 || !buf)
+        return 0;
+
+    if (!pid_is_watched(pid))
+        return 0;
+
+    struct task_struct *task = (struct task_struct *)bpf_get_current_task();
+
+    struct ssl_event *e = bpf_ringbuf_reserve(&ssl_events, sizeof(*e), 0);
+    if (!e)
+        return 0;
+    __builtin_memset(e, 0, sizeof(*e));
+    e->timestamp_ns = bpf_ktime_get_ns();
+    e->pid       = pid;
+    e->tgid      = (__u32)id;
+    e->ppid      = BPF_CORE_READ(task, real_parent, tgid);
+    e->direction = SSL_DIRECTION_RECV;
+    bpf_get_current_comm(&e->comm, sizeof(e->comm));
+
+    __u32 to_copy = retval < MAX_SSL_BUF ? (__u32)retval : MAX_SSL_BUF;
+    e->data_len = to_copy;
+    bpf_probe_read_user(e->data, to_copy, (void *)buf);
+
+    bpf_ringbuf_submit(e, 0);
     return 0;
 }

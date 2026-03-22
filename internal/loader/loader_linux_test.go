@@ -3,6 +3,7 @@
 package loader
 
 import (
+	"encoding/binary"
 	"testing"
 	"time"
 
@@ -52,6 +53,109 @@ func TestBootWallTime(t *testing.T) {
 
 	assert.True(t, bt.Before(before), "boot time must be before the call")
 	assert.True(t, bt.After(after.Add(-30*24*time.Hour)), "boot time must be within the last 30 days")
+}
+
+// TestDecodeEvent_fields verifies that every field is read from the correct
+// byte offset in the 320-byte struct event layout.
+func TestDecodeEvent_fields(t *testing.T) {
+	raw := make([]byte, 320)
+
+	// [0:8]    timestamp_ns = 1_000_000_000 (1 second)
+	const oneSecNs = uint64(1e9)
+	for i := range 8 {
+		raw[i] = byte(oneSecNs >> (8 * i))
+	}
+
+	// [8:12]   pid = 1234
+	binary.LittleEndian.PutUint32(raw[8:12], 1234)
+	// [12:16]  tgid = 5678 (unused)
+	binary.LittleEndian.PutUint32(raw[12:16], 5678)
+	// [16:20]  ppid = 999
+	binary.LittleEndian.PutUint32(raw[16:20], 999)
+	// [20]     event_type = 0 (FileOpen)
+	raw[20] = 0
+	// [24:40]  comm = "ollama"
+	copy(raw[24:40], "ollama\x00")
+	// [40:296] path = "/etc/passwd"
+	copy(raw[40:296], "/etc/passwd\x00")
+	// [296:300] dest_ip4 = 8.8.8.8 in network byte order
+	raw[296], raw[297], raw[298], raw[299] = 8, 8, 8, 8
+	// [316:318] dest_port = 443
+	binary.LittleEndian.PutUint16(raw[316:318], 443)
+
+	knownBoot := time.Unix(0, 0) // epoch as boot time for easy arithmetic
+	e, err := decodeEvent(raw, knownBoot)
+	require.NoError(t, err)
+
+	assert.Equal(t, uint32(1234), e.PID, "pid")
+	assert.Equal(t, uint32(999), e.PPID, "ppid")
+	assert.Equal(t, uint8(0), uint8(e.Type), "event_type")
+	assert.Equal(t, "ollama", e.Comm, "comm")
+	assert.Equal(t, "/etc/passwd", e.Path, "path")
+	assert.Equal(t, uint16(443), e.DestPort, "dest_port")
+	assert.NotNil(t, e.DestIP, "dest_ip should be set")
+	assert.Equal(t, "8.8.8.8", e.DestIP.String(), "dest_ip value")
+	// timestamp = boot(epoch) + 1s = Unix second 1
+	assert.Equal(t, int64(1), e.Timestamp.Unix(), "timestamp")
+}
+
+// TestDecodeEvent_tooShort verifies an error is returned for truncated input.
+func TestDecodeEvent_tooShort(t *testing.T) {
+	_, err := decodeEvent(make([]byte, 100), time.Now())
+	assert.Error(t, err)
+}
+
+// TestDecodeSSLEvent_fields verifies the ssl_event field layout.
+func TestDecodeSSLEvent_fields(t *testing.T) {
+	raw := make([]byte, 4140)
+
+	// [0:8]    timestamp_ns = 2_000_000_000 (2 seconds)
+	const twoSecNs = uint64(2e9)
+	for i := range 8 {
+		raw[i] = byte(twoSecNs >> (8 * i))
+	}
+	// [8:12]   pid = 7777
+	binary.LittleEndian.PutUint32(raw[8:12], 7777)
+	// [16:20]  ppid = 3333
+	binary.LittleEndian.PutUint32(raw[16:20], 3333)
+	// [20]     direction = 1 (SSLRecv)
+	raw[20] = 1
+	// [24:40]  comm = "claude"
+	copy(raw[24:40], "claude\x00")
+	// [40:44]  data_len = 12
+	binary.LittleEndian.PutUint32(raw[40:44], 12)
+	// [44:56]  data = "hello world!"
+	copy(raw[44:], "hello world!")
+
+	knownBoot := time.Unix(0, 0)
+	e, err := decodeSSLEvent(raw, knownBoot)
+	require.NoError(t, err)
+
+	assert.Equal(t, uint32(7777), e.PID, "pid")
+	assert.Equal(t, uint32(3333), e.PPID, "ppid")
+	assert.Equal(t, uint8(1), uint8(e.Direction), "direction SSLRecv")
+	assert.Equal(t, "claude", e.Comm, "comm")
+	assert.Equal(t, "hello world!", e.Data, "data")
+	assert.Equal(t, int64(2), e.Timestamp.Unix(), "timestamp")
+}
+
+// TestDecodeSSLEvent_dataLenCap verifies data_len > MAX_SSL_BUF is clamped.
+func TestDecodeSSLEvent_dataLenCap(t *testing.T) {
+	raw := make([]byte, 4140)
+	// data_len = 99999 (exceeds MAX_SSL_BUF=4096)
+	binary.LittleEndian.PutUint32(raw[40:44], 99999)
+	copy(raw[44:], make([]byte, 4096)) // zeros
+
+	e, err := decodeSSLEvent(raw, time.Now())
+	require.NoError(t, err)
+	// Should clamp to available buf, not crash
+	assert.LessOrEqual(t, len(e.Data), 4096)
+}
+
+// TestDecodeSSLEvent_tooShort verifies an error is returned for truncated input.
+func TestDecodeSSLEvent_tooShort(t *testing.T) {
+	_, err := decodeSSLEvent(make([]byte, 10), time.Now())
+	assert.Error(t, err)
 }
 
 // TestDecodeEvent_timestampUsesWallClock verifies that a BPF monotonic

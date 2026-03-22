@@ -22,6 +22,8 @@
       --orange:    #fab387;
       --purple:    #cba6f7;
       --yellow:    #f9e2af;
+      --cyan:      #89dceb;
+      --cyan-dim:  #0d2a30;
       --radius:    6px;
       font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
     }
@@ -141,6 +143,42 @@
 
     .conn-dot.offline { background: var(--red); }
 
+    /* ── Tab bar ── */
+    .tab-bar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 20px;
+      display: flex;
+      gap: 0;
+      flex-shrink: 0;
+    }
+
+    .tab-btn {
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--muted);
+      padding: 10px 16px;
+      cursor: pointer;
+      font-size: 12px;
+      font-family: inherit;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      transition: color 0.1s, border-color 0.1s;
+      margin-bottom: -1px;
+    }
+
+    .tab-btn:hover { color: var(--text); }
+
+    .tab-btn.active {
+      color: var(--text);
+      border-bottom-color: var(--blue);
+    }
+
+    /* ── Tab content panels ── */
+    .tab-panel { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+    .tab-panel.active { display: flex; }
+
     /* ── Toolbar ── */
     .toolbar {
       background: var(--surface);
@@ -184,6 +222,7 @@
     .filter-btn.type-file.active    { color: var(--blue); border-color: var(--blue); }
     .filter-btn.type-exec.active    { color: var(--orange); border-color: var(--orange); }
     .filter-btn.type-net.active     { color: var(--purple); border-color: var(--purple); }
+    .filter-btn.type-ssl.active     { color: var(--cyan); border-color: var(--cyan); }
 
     .divider { width: 1px; background: var(--border); align-self: stretch; margin: 0 4px; }
 
@@ -278,9 +317,12 @@
     .badge-file { background: #1a2a3a; color: var(--blue); }
     .badge-exec { background: #2a1f10; color: var(--orange); }
     .badge-net  { background: #1f1a2a; color: var(--purple); }
+    .badge-ssl  { background: var(--cyan-dim); color: var(--cyan); }
 
     .detail-cell { color: var(--text); font-size: 12px; }
     .detail-cell .dest { color: var(--purple); }
+    .detail-cell .ssl-preview { color: var(--cyan); font-size: 11px; }
+    .detail-cell .ssl-dir { color: var(--muted); margin-right: 6px; }
 
     .action-cell { text-align: right; }
 
@@ -320,6 +362,173 @@
     .empty-icon { font-size: 32px; opacity: 0.4; }
     .empty-text { font-size: 13px; }
 
+    /* ── Timeline tab ── */
+    .timeline-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+    }
+
+    .timeline-axis {
+      display: flex;
+      justify-content: space-between;
+      padding: 0 0 8px 120px;
+      color: var(--muted);
+      font-size: 10px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 12px;
+    }
+
+    .swimlane {
+      display: flex;
+      align-items: center;
+      margin-bottom: 10px;
+      height: 28px;
+    }
+
+    .swimlane-label {
+      width: 120px;
+      flex-shrink: 0;
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding-right: 12px;
+      text-align: right;
+    }
+
+    .swimlane-track {
+      flex: 1;
+      position: relative;
+      height: 100%;
+      background: var(--raised);
+      border-radius: 3px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    .tl-dot {
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      cursor: pointer;
+      transition: transform 0.1s;
+    }
+
+    .tl-dot:hover { transform: translate(-50%, -50%) scale(1.6); }
+    .tl-dot.allow { background: var(--green); box-shadow: 0 0 4px var(--green); }
+    .tl-dot.block { background: var(--red); box-shadow: 0 0 4px var(--red); }
+
+    .tl-tooltip {
+      position: fixed;
+      background: var(--raised);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 8px 12px;
+      font-size: 11px;
+      color: var(--text);
+      pointer-events: none;
+      z-index: 100;
+      white-space: nowrap;
+      display: none;
+    }
+
+    .tl-tooltip .tl-tt-row { margin-bottom: 2px; }
+    .tl-tooltip .tl-tt-label { color: var(--muted); margin-right: 6px; }
+
+    /* ── Process tree tab ── */
+    .proctree-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+    }
+
+    .proc-node {
+      margin-bottom: 4px;
+    }
+
+    .proc-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.1s;
+      user-select: none;
+    }
+
+    .proc-header:hover { background: var(--raised); }
+
+    .proc-toggle {
+      color: var(--muted);
+      font-size: 10px;
+      width: 12px;
+      flex-shrink: 0;
+    }
+
+    .proc-pid {
+      background: var(--raised);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+    }
+
+    .proc-comm {
+      color: var(--yellow);
+      font-weight: 600;
+      font-size: 12px;
+    }
+
+    .proc-counts {
+      margin-left: auto;
+      display: flex;
+      gap: 8px;
+      font-size: 10px;
+    }
+
+    .proc-count-total { color: var(--muted); }
+    .proc-count-block { color: var(--red); }
+
+    .proc-children {
+      margin-left: 24px;
+      margin-top: 4px;
+    }
+
+    .proc-events {
+      margin-top: 4px;
+      margin-left: 24px;
+      border-left: 2px solid var(--border);
+      padding-left: 8px;
+    }
+
+    .proc-event-row {
+      padding: 3px 0;
+      font-size: 11px;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .proc-event-row:last-child { border-bottom: none; }
+
+    .proc-event-type { color: var(--blue); width: 70px; flex-shrink: 0; }
+    .proc-event-type.exec { color: var(--orange); }
+    .proc-event-type.net_connect { color: var(--purple); }
+    .proc-event-type.ssl_data { color: var(--cyan); }
+    .proc-event-detail { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+    .proc-event-action-block { color: var(--red); flex-shrink: 0; }
+    .proc-event-action-allow { color: var(--green); flex-shrink: 0; }
+
     /* ── Scrollbar ── */
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-track { background: var(--bg); }
@@ -347,49 +556,92 @@
   </div>
 </header>
 
-<div class="toolbar">
-  <div class="filter-group" id="actionFilters">
-    <button class="filter-btn active" data-filter="action" data-value="all">ALL</button>
-    <button class="filter-btn action-block" data-filter="action" data-value="BLOCK">BLOCK</button>
-    <button class="filter-btn action-allow" data-filter="action" data-value="ALLOW">ALLOW</button>
-  </div>
-  <div class="divider"></div>
-  <div class="filter-group" id="typeFilters">
-    <button class="filter-btn type-file" data-filter="type" data-value="file_open">FILE</button>
-    <button class="filter-btn type-exec" data-filter="type" data-value="exec">EXEC</button>
-    <button class="filter-btn type-net" data-filter="type" data-value="net_connect">NET</button>
-  </div>
-  <button class="clear-btn" id="clearBtn">clear</button>
+<!-- Tab bar -->
+<div class="tab-bar">
+  <button class="tab-btn active" data-tab="log">Log</button>
+  <button class="tab-btn" data-tab="timeline">Timeline</button>
+  <button class="tab-btn" data-tab="proctree">Process Tree</button>
 </div>
 
-<div class="table-container" id="tableContainer">
-  <div class="empty" id="emptyState">
-    <div class="empty-icon">◈</div>
-    <div class="empty-text">waiting for events…</div>
+<!-- ── LOG TAB ── -->
+<div class="tab-panel active" id="panel-log">
+  <div class="toolbar">
+    <div class="filter-group" id="actionFilters">
+      <button class="filter-btn active" data-filter="action" data-value="all">ALL</button>
+      <button class="filter-btn action-block" data-filter="action" data-value="BLOCK">BLOCK</button>
+      <button class="filter-btn action-allow" data-filter="action" data-value="ALLOW">ALLOW</button>
+    </div>
+    <div class="divider"></div>
+    <div class="filter-group" id="typeFilters">
+      <button class="filter-btn type-file" data-filter="type" data-value="file_open">FILE</button>
+      <button class="filter-btn type-exec" data-filter="type" data-value="exec">EXEC</button>
+      <button class="filter-btn type-net" data-filter="type" data-value="net_connect">NET</button>
+      <button class="filter-btn type-ssl" data-filter="type" data-value="ssl_data">SSL</button>
+    </div>
+    <button class="clear-btn" id="clearBtn">clear</button>
   </div>
-  <table id="eventsTable" style="display:none">
-    <thead>
-      <tr>
-        <th class="col-time">time</th>
-        <th class="col-pid">pid</th>
-        <th class="col-process">process</th>
-        <th class="col-type">type</th>
-        <th class="col-detail">detail</th>
-        <th class="col-action">action</th>
-      </tr>
-    </thead>
-    <tbody id="eventsBody"></tbody>
-  </table>
+
+  <div class="table-container" id="tableContainer">
+    <div class="empty" id="emptyState">
+      <div class="empty-icon">◈</div>
+      <div class="empty-text">waiting for events…</div>
+    </div>
+    <table id="eventsTable" style="display:none">
+      <thead>
+        <tr>
+          <th class="col-time">time</th>
+          <th class="col-pid">pid</th>
+          <th class="col-process">process</th>
+          <th class="col-type">type</th>
+          <th class="col-detail">detail</th>
+          <th class="col-action">action</th>
+        </tr>
+      </thead>
+      <tbody id="eventsBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── TIMELINE TAB ── -->
+<div class="tab-panel" id="panel-timeline">
+  <div class="timeline-container" id="timelineContainer">
+    <div class="empty" id="tlEmpty">
+      <div class="empty-icon">◈</div>
+      <div class="empty-text">no events yet</div>
+    </div>
+    <div id="tlContent" style="display:none">
+      <div class="timeline-axis" id="tlAxis"></div>
+      <div id="tlLanes"></div>
+    </div>
+  </div>
+</div>
+<div class="tl-tooltip" id="tlTooltip"></div>
+
+<!-- ── PROCESS TREE TAB ── -->
+<div class="tab-panel" id="panel-proctree">
+  <div class="proctree-container" id="proctreeContainer">
+    <div class="empty" id="ptEmpty">
+      <div class="empty-icon">◈</div>
+      <div class="empty-text">no events yet</div>
+    </div>
+    <div id="ptContent"></div>
+  </div>
 </div>
 
 <script>
   const MAX_ROWS = 500;
 
   // ── State ──────────────────────────────────────────────────────────────────
-  let allEvents = [];
-  let filterAction = 'all';
-  let filterType   = null;
-  let total = 0, blocked = 0, allowed = 0;
+  const state = {
+    events: [],        // raw event objects (capped at MAX_ROWS)
+    processes: new Map(), // pid → {pid, ppid, comm, events:[], collapsed: true}
+    total: 0,
+    blocked: 0,
+    allowed: 0,
+    filterAction: 'all',
+    filterType: null,
+    activeTab: 'log',
+  };
 
   // ── DOM refs ───────────────────────────────────────────────────────────────
   const liveDot     = document.getElementById('liveDot');
@@ -404,6 +656,7 @@
   const eventsBody  = document.getElementById('eventsBody');
   const emptyState  = document.getElementById('emptyState');
   const clearBtn    = document.getElementById('clearBtn');
+  const tlTooltip   = document.getElementById('tlTooltip');
 
   // ── Relative time ──────────────────────────────────────────────────────────
   function relTime(isoStr) {
@@ -414,19 +667,27 @@
     return Math.floor(diff/3600) + 'h';
   }
 
-  // Update all relative timestamps every 5s.
   setInterval(() => {
     document.querySelectorAll('[data-ts]').forEach(el => {
       el.textContent = relTime(el.dataset.ts);
     });
   }, 5000);
 
-  // ── Render one row ─────────────────────────────────────────────────────────
+  // ── Escape HTML ────────────────────────────────────────────────────────────
+  function escHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  // ── Log tab: render one row ────────────────────────────────────────────────
   function typeBadge(evt) {
     const map = {
       file_open:   ['FILE', 'badge-file'],
       exec:        ['EXEC', 'badge-exec'],
       net_connect: ['NET',  'badge-net'],
+      ssl_data:    ['SSL',  'badge-ssl'],
     };
     const [label, cls] = map[evt.event] || [evt.event, ''];
     return `<span class="badge ${cls}">${label}</span>`;
@@ -438,7 +699,12 @@
       const port = evt.dest_port || '';
       return `<span class="dest">${ip}:${port}</span>`;
     }
-    return evt.path || '';
+    if (evt.event === 'ssl_data') {
+      const dir = evt.ssl_dir || '';
+      const preview = (evt.ssl_data || '').slice(0, 120);
+      return `<span class="ssl-dir">[${escHtml(dir)}]</span><span class="ssl-preview">${escHtml(preview)}</span>`;
+    }
+    return escHtml(evt.path || '');
   }
 
   function makeRow(evt) {
@@ -463,17 +729,10 @@
     return tr;
   }
 
-  function escHtml(s) {
-    return String(s)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-  }
-
-  // ── Filter & display ───────────────────────────────────────────────────────
+  // ── Log tab: filter & display ──────────────────────────────────────────────
   function rowVisible(tr) {
-    if (filterAction !== 'all' && tr.dataset.action !== filterAction) return false;
-    if (filterType && tr.dataset.event !== filterType) return false;
+    if (state.filterAction !== 'all' && tr.dataset.action !== state.filterAction) return false;
+    if (state.filterType && tr.dataset.event !== state.filterType) return false;
     return true;
   }
 
@@ -488,36 +747,71 @@
     eventsTable.style.display = visible === 0 ? 'none' : '';
   }
 
-  // ── Add event ──────────────────────────────────────────────────────────────
+  // ── Add event to state and relevant views ──────────────────────────────────
   function addEvent(evt) {
-    total++;
-    if (evt.action === 'BLOCK') blocked++; else allowed++;
-    statTotal.textContent   = total;
-    statBlocked.textContent = blocked;
-    statAllowed.textContent = allowed;
+    state.total++;
+    if (evt.action === 'BLOCK') state.blocked++; else state.allowed++;
+    statTotal.textContent   = state.total;
+    statBlocked.textContent = state.blocked;
+    statAllowed.textContent = state.allowed;
 
+    // Keep events list capped
+    state.events.unshift(evt);
+    if (state.events.length > MAX_ROWS) state.events.pop();
+
+    // Update process map
+    const pid = evt.pid;
+    if (!state.processes.has(pid)) {
+      state.processes.set(pid, {
+        pid,
+        ppid: evt.ppid || 0,
+        comm: evt.comm,
+        events: [],
+        collapsed: true,
+      });
+    }
+    const proc = state.processes.get(pid);
+    proc.events.unshift(evt);
+    if (proc.events.length > 200) proc.events.pop();
+
+    // Update log tab (always)
     const tr = makeRow(evt);
     eventsBody.insertBefore(tr, eventsBody.firstChild);
-
-    // trim oldest rows
     while (eventsBody.children.length > MAX_ROWS) {
       eventsBody.removeChild(eventsBody.lastChild);
     }
-
     if (rowVisible(tr)) {
       emptyState.style.display  = 'none';
       eventsTable.style.display = '';
     } else {
       tr.style.display = 'none';
     }
+
+    // Update active non-log tabs
+    if (state.activeTab === 'timeline') renderTimeline();
+    if (state.activeTab === 'proctree') renderProcTree();
   }
+
+  // ── Tab switching ──────────────────────────────────────────────────────────
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab;
+      state.activeTab = tab;
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      document.getElementById('panel-' + tab).classList.add('active');
+      if (tab === 'timeline') renderTimeline();
+      if (tab === 'proctree') renderProcTree();
+    });
+  });
 
   // ── Filters ────────────────────────────────────────────────────────────────
   document.querySelectorAll('[data-filter="action"]').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('[data-filter="action"]').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      filterAction = btn.dataset.value;
+      state.filterAction = btn.dataset.value;
       applyFilters();
     });
   });
@@ -525,13 +819,13 @@
   document.querySelectorAll('[data-filter="type"]').forEach(btn => {
     btn.addEventListener('click', () => {
       const val = btn.dataset.value;
-      if (filterType === val) {
+      if (state.filterType === val) {
         btn.classList.remove('active');
-        filterType = null;
+        state.filterType = null;
       } else {
         document.querySelectorAll('[data-filter="type"]').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        filterType = val;
+        state.filterType = val;
       }
       applyFilters();
     });
@@ -539,14 +833,244 @@
 
   clearBtn.addEventListener('click', () => {
     eventsBody.innerHTML = '';
-    total = blocked = allowed = 0;
+    state.events = [];
+    state.processes.clear();
+    state.total = state.blocked = state.allowed = 0;
     statTotal.textContent = statBlocked.textContent = statAllowed.textContent = 0;
     emptyState.style.display  = 'flex';
     eventsTable.style.display = 'none';
+    renderTimeline();
+    renderProcTree();
   });
 
+  // ── Timeline rendering ─────────────────────────────────────────────────────
+  const LANE_TYPES = ['file_open', 'exec', 'net_connect', 'ssl_data'];
+  const LANE_LABELS = { file_open: 'FILE', exec: 'EXEC', net_connect: 'NET', ssl_data: 'SSL' };
+
+  function renderTimeline() {
+    const tlEmpty   = document.getElementById('tlEmpty');
+    const tlContent = document.getElementById('tlContent');
+    const tlAxis    = document.getElementById('tlAxis');
+    const tlLanes   = document.getElementById('tlLanes');
+
+    if (state.events.length === 0) {
+      tlEmpty.style.display   = 'flex';
+      tlContent.style.display = 'none';
+      return;
+    }
+
+    tlEmpty.style.display   = 'none';
+    tlContent.style.display = 'block';
+
+    // Determine time range
+    const times = state.events.map(e => new Date(e.ts).getTime()).filter(t => !isNaN(t));
+    if (times.length === 0) return;
+    let tMin = Math.min(...times);
+    let tMax = Math.max(...times);
+    if (tMax === tMin) tMax = tMin + 1000;
+    const span = tMax - tMin;
+
+    // Axis labels
+    const axisFmt = t => {
+      const d = new Date(t);
+      return d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+    };
+    tlAxis.innerHTML = '';
+    for (let i = 0; i <= 4; i++) {
+      const t = tMin + (span * i / 4);
+      const span_el = document.createElement('span');
+      span_el.textContent = axisFmt(t);
+      tlAxis.appendChild(span_el);
+    }
+
+    // Build lanes
+    // Find which types actually have events
+    const activeTypes = LANE_TYPES.filter(type =>
+      state.events.some(e => e.event === type)
+    );
+
+    tlLanes.innerHTML = '';
+
+    activeTypes.forEach(type => {
+      const evts = state.events.filter(e => e.event === type);
+
+      const lane = document.createElement('div');
+      lane.className = 'swimlane';
+
+      const label = document.createElement('div');
+      label.className = 'swimlane-label';
+      label.textContent = LANE_LABELS[type] || type;
+      lane.appendChild(label);
+
+      const track = document.createElement('div');
+      track.className = 'swimlane-track';
+
+      evts.forEach(evt => {
+        const t = new Date(evt.ts).getTime();
+        if (isNaN(t)) return;
+        const pct = ((t - tMin) / span) * 100;
+
+        const dot = document.createElement('div');
+        dot.className = 'tl-dot ' + (evt.action === 'BLOCK' ? 'block' : 'allow');
+        dot.style.left = pct + '%';
+
+        dot.addEventListener('mouseenter', e => {
+          const tt = tlTooltip;
+          let detailStr = evt.path || (evt.dest_ip ? evt.dest_ip + ':' + evt.dest_port : '') || (evt.ssl_data ? evt.ssl_data.slice(0, 60) : '');
+          tt.innerHTML = `
+            <div class="tl-tt-row"><span class="tl-tt-label">comm</span>${escHtml(evt.comm)}</div>
+            <div class="tl-tt-row"><span class="tl-tt-label">type</span>${escHtml(evt.event)}</div>
+            ${detailStr ? `<div class="tl-tt-row"><span class="tl-tt-label">detail</span>${escHtml(detailStr)}</div>` : ''}
+            <div class="tl-tt-row"><span class="tl-tt-label">action</span>${escHtml(evt.action)}</div>
+            <div class="tl-tt-row"><span class="tl-tt-label">time</span>${escHtml(evt.ts)}</div>
+          `;
+          tt.style.display = 'block';
+          tt.style.left = (e.clientX + 12) + 'px';
+          tt.style.top  = (e.clientY - 10) + 'px';
+        });
+
+        dot.addEventListener('mousemove', e => {
+          tlTooltip.style.left = (e.clientX + 12) + 'px';
+          tlTooltip.style.top  = (e.clientY - 10) + 'px';
+        });
+
+        dot.addEventListener('mouseleave', () => {
+          tlTooltip.style.display = 'none';
+        });
+
+        track.appendChild(dot);
+      });
+
+      lane.appendChild(track);
+      tlLanes.appendChild(lane);
+    });
+  }
+
+  // ── Process tree rendering ─────────────────────────────────────────────────
+  function renderProcTree() {
+    const ptEmpty   = document.getElementById('ptEmpty');
+    const ptContent = document.getElementById('ptContent');
+
+    if (state.processes.size === 0) {
+      ptEmpty.style.display   = 'flex';
+      ptContent.style.display = 'none';
+      return;
+    }
+
+    ptEmpty.style.display   = 'none';
+    ptContent.style.display = 'block';
+
+    // Build pid→children map
+    const children = new Map(); // pid → [pid, ...]
+    const allPids = new Set(state.processes.keys());
+
+    state.processes.forEach((proc, pid) => {
+      const ppid = proc.ppid;
+      if (ppid && allPids.has(ppid)) {
+        if (!children.has(ppid)) children.set(ppid, []);
+        children.get(ppid).push(pid);
+      }
+    });
+
+    // Root nodes: PIDs whose PPID is not tracked
+    const roots = [];
+    state.processes.forEach((proc, pid) => {
+      const ppid = proc.ppid;
+      if (!ppid || !allPids.has(ppid)) {
+        roots.push(pid);
+      }
+    });
+
+    roots.sort((a, b) => a - b);
+
+    ptContent.innerHTML = '';
+
+    function renderNode(pid, depth) {
+      const proc = state.processes.get(pid);
+      if (!proc) return null;
+
+      const totalEvts = proc.events.length;
+      const blockEvts = proc.events.filter(e => e.action === 'BLOCK').length;
+      const kids = (children.get(pid) || []).slice().sort((a,b) => a-b);
+      const hasChildren = kids.length > 0;
+      const isCollapsed = proc.collapsed;
+
+      const node = document.createElement('div');
+      node.className = 'proc-node';
+
+      const header = document.createElement('div');
+      header.className = 'proc-header';
+      header.innerHTML = `
+        <span class="proc-toggle">${hasChildren || totalEvts > 0 ? (isCollapsed ? '▶' : '▼') : ' '}</span>
+        <span class="proc-pid">${pid}</span>
+        <span class="proc-comm">${escHtml(proc.comm)}</span>
+        <span class="proc-counts">
+          <span class="proc-count-total">${totalEvts} evt${totalEvts !== 1 ? 's' : ''}</span>
+          ${blockEvts > 0 ? `<span class="proc-count-block">${blockEvts} blocked</span>` : ''}
+        </span>
+      `;
+
+      header.addEventListener('click', () => {
+        proc.collapsed = !proc.collapsed;
+        renderProcTree(); // full re-render
+      });
+
+      node.appendChild(header);
+
+      if (!isCollapsed) {
+        // Show events for this process
+        if (proc.events.length > 0) {
+          const evtList = document.createElement('div');
+          evtList.className = 'proc-events';
+          proc.events.slice(0, 20).forEach(evt => {
+            const row = document.createElement('div');
+            row.className = 'proc-event-row';
+            let detailStr = evt.path || '';
+            if (evt.event === 'net_connect') {
+              detailStr = (evt.dest_ip || '') + ':' + (evt.dest_port || '');
+            } else if (evt.event === 'ssl_data') {
+              detailStr = '[' + (evt.ssl_dir || '') + '] ' + (evt.ssl_data || '').slice(0, 80);
+            }
+            const actionCls = evt.action === 'BLOCK' ? 'proc-event-action-block' : 'proc-event-action-allow';
+            row.innerHTML = `
+              <span class="proc-event-type ${escHtml(evt.event)}">${escHtml(evt.event)}</span>
+              <span class="proc-event-detail">${escHtml(detailStr)}</span>
+              <span class="${actionCls}">${escHtml(evt.action)}</span>
+            `;
+            evtList.appendChild(row);
+          });
+          if (proc.events.length > 20) {
+            const more = document.createElement('div');
+            more.className = 'proc-event-row';
+            more.style.color = 'var(--muted)';
+            more.textContent = `… ${proc.events.length - 20} more`;
+            evtList.appendChild(more);
+          }
+          node.appendChild(evtList);
+        }
+
+        // Show children
+        if (hasChildren) {
+          const childContainer = document.createElement('div');
+          childContainer.className = 'proc-children';
+          kids.forEach(childPid => {
+            const childNode = renderNode(childPid, depth + 1);
+            if (childNode) childContainer.appendChild(childNode);
+          });
+          node.appendChild(childContainer);
+        }
+      }
+
+      return node;
+    }
+
+    roots.forEach(pid => {
+      const node = renderNode(pid, 0);
+      if (node) ptContent.appendChild(node);
+    });
+  }
+
   // ── SSE connection ─────────────────────────────────────────────────────────
-  // Use relative URL so this works behind the Coder app proxy.
   function connect() {
     const base = new URL('.', window.location.href).href;
     const src  = new EventSource(new URL('events', base).href);

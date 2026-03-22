@@ -22,16 +22,19 @@ func New(w io.Writer) *Logger {
 
 // record is the JSON shape of a single audit log entry.
 type record struct {
-	TS      string `json:"ts"`
-	PID     uint32 `json:"pid"`
-	Comm    string `json:"comm"`
-	Event   string `json:"event"`
-	Action  string `json:"action"`
-	Reason  string `json:"reason"`
-	Path    string `json:"path,omitempty"`
-	Argv    []string `json:"argv,omitempty"`
-	DestIP  string `json:"dest_ip,omitempty"`
-	DestPort uint16 `json:"dest_port,omitempty"`
+	TS       string   `json:"ts"`
+	PID      uint32   `json:"pid"`
+	PPID     uint32   `json:"ppid,omitempty"`
+	Comm     string   `json:"comm"`
+	Event    string   `json:"event"`
+	Action   string   `json:"action"`
+	Reason   string   `json:"reason"`
+	Path     string   `json:"path,omitempty"`
+	Argv     []string `json:"argv,omitempty"`
+	DestIP   string   `json:"dest_ip,omitempty"`
+	DestPort uint16   `json:"dest_port,omitempty"`
+	SSLDir   string   `json:"ssl_dir,omitempty"`
+	SSLData  string   `json:"ssl_data,omitempty"`
 }
 
 // Log writes dec as a single newline-terminated JSON object.
@@ -40,6 +43,7 @@ func (l *Logger) Log(dec detector.Decision) {
 	r := record{
 		TS:     e.Timestamp.UTC().Format("2006-01-02T15:04:05Z"),
 		PID:    e.PID,
+		PPID:   e.PPID,
 		Comm:   e.Comm,
 		Event:  e.Type.String(),
 		Action: dec.Action.String(),
@@ -54,6 +58,13 @@ func (l *Logger) Log(dec detector.Decision) {
 			r.DestIP = e.DestIP.String()
 		}
 		r.DestPort = e.DestPort
+	case events.SSLData:
+		r.SSLDir = e.Direction.String()
+		if len(e.Data) > 256 {
+			r.SSLData = e.Data[:256] + "…"
+		} else {
+			r.SSLData = e.Data
+		}
 	}
 	_ = l.enc.Encode(r) // json.Encoder appends \n automatically
 }

@@ -33,14 +33,16 @@ var watchFlags struct {
 	bpfObj    string
 	uiEnabled bool
 	uiPort    int
+	sslBinary string
 }
 
 func init() {
-	watchCmd.Flags().StringVar(&watchFlags.framework, "framework", "ollama", "AI framework profile to use (ollama, vllm, llamacpp)")
+	watchCmd.Flags().StringVar(&watchFlags.framework, "framework", "ollama", "AI framework profile to use (ollama, vllm, llamacpp, gemini-cli, claude-code)")
 	watchCmd.Flags().StringVar(&watchFlags.profile, "profile", "", "Path to a custom profile YAML (overrides --framework)")
 	watchCmd.Flags().StringVar(&watchFlags.bpfObj, "bpf-obj", "/usr/lib/vigil/vigil.bpf.o", "Path to compiled eBPF object file")
 	watchCmd.Flags().BoolVar(&watchFlags.uiEnabled, "ui", false, "Start the real-time web UI")
 	watchCmd.Flags().IntVar(&watchFlags.uiPort, "port", 7394, "Port to serve the web UI on (requires --ui)")
+	watchCmd.Flags().StringVar(&watchFlags.sslBinary, "ssl-binary", "", "Path to binary containing SSL_write/SSL_read for prompt capture (optional)")
 	rootCmd.AddCommand(watchCmd)
 	rootCmd.AddCommand(profileCmd)
 }
@@ -59,7 +61,7 @@ func runWatch(cmd *cobra.Command, _ []string) error {
 	fmt.Fprintf(cmd.OutOrStdout(), "vigil: loaded profile %q\n", p.Name)
 	fmt.Fprintf(cmd.OutOrStdout(), "vigil: attaching eBPF programs (requires root + Linux)...\n")
 
-	l, err := loader.Load(p, watchFlags.bpfObj)
+	l, err := loader.Load(p, watchFlags.bpfObj, watchFlags.sslBinary)
 	if err != nil {
 		return fmt.Errorf("loading eBPF: %w\nEnsure: Linux kernel 5.7+, CONFIG_BPF_LSM=y, lsm=bpf, run as root", err)
 	}
@@ -111,9 +113,11 @@ var profileListCmd = &cobra.Command{
 	Short: "List available built-in profiles",
 	Run: func(cmd *cobra.Command, _ []string) {
 		fmt.Fprintln(cmd.OutOrStdout(), "Built-in profiles:")
-		fmt.Fprintln(cmd.OutOrStdout(), "  ollama    — Ollama LLM server")
-		fmt.Fprintln(cmd.OutOrStdout(), "  vllm      — vLLM inference server (coming soon)")
-		fmt.Fprintln(cmd.OutOrStdout(), "  llamacpp  — llama.cpp server (coming soon)")
+		fmt.Fprintln(cmd.OutOrStdout(), "  ollama      — Ollama LLM server")
+		fmt.Fprintln(cmd.OutOrStdout(), "  vllm        — vLLM inference server")
+		fmt.Fprintln(cmd.OutOrStdout(), "  llamacpp    — llama.cpp server")
+		fmt.Fprintln(cmd.OutOrStdout(), "  gemini-cli  — Google Gemini CLI agent")
+		fmt.Fprintln(cmd.OutOrStdout(), "  claude-code — Anthropic Claude Code agent")
 	},
 }
 

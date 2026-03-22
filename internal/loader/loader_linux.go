@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/VectorInstitute/vigil/internal/events"
@@ -22,7 +23,6 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-
 // Objects holds the loaded eBPF maps and programs.
 // ebpf struct tags must match the exact names used in the BPF C source.
 // Without tags, cilium/ebpf uses the field name as-is (not snake_case),
@@ -30,6 +30,8 @@ import (
 type objects struct {
 	// Maps
 	Events      *ebpf.Map `ebpf:"events"`
+	SSLEvents   *ebpf.Map `ebpf:"ssl_events"`
+	SSLReadArgs *ebpf.Map `ebpf:"ssl_read_args"`
 	BlockedPaths *ebpf.Map `ebpf:"blocked_paths"`
 	BlockedIPv4 *ebpf.Map `ebpf:"blocked_ipv4"`
 	EntryComm   *ebpf.Map `ebpf:"entry_comm"`   // agent root process comm
@@ -49,6 +51,11 @@ type objects struct {
 	LsmFileOpen      *ebpf.Program `ebpf:"vigil_file_open"`
 	LsmSocketConnect *ebpf.Program `ebpf:"vigil_socket_connect"`
 	LsmBprmCheck     *ebpf.Program `ebpf:"vigil_bprm_check"`
+
+	// SSL uprobes
+	UprobeSSLWrite      *ebpf.Program `ebpf:"uprobe_ssl_write"`
+	UprobeSSLReadEntry  *ebpf.Program `ebpf:"uprobe_ssl_read_entry"`
+	UretprobeSSLRead    *ebpf.Program `ebpf:"uretprobe_ssl_read"`
 }
 
 // Loader attaches eBPF programs to the kernel and streams events.
@@ -56,13 +63,19 @@ type Loader struct {
 	objs         objects
 	links        []link.Link
 	reader       *ringbuf.Reader
+	sslReader    *ringbuf.Reader // nil if SSL not requested
+	eventCh      chan events.Event
+	errCh        chan error
+	doneCh       chan struct{}
+	wg           sync.WaitGroup
+	closeOnce    sync.Once
 	bootWallTime time.Time // wall-clock time at system boot, for timestamp conversion
 	entryComm    string    // agent root process comm, empty if lineage tracking disabled
 }
 
 // Load removes the memlock limit, loads eBPF objects from the embedded .o file,
 // populates block-list maps from the profile, and attaches all hooks.
-func Load(p *profiles.Profile, objPath string) (*Loader, error) {
+func Load(p *profiles.Profile, objPath, sslBinaryPath string) (*Loader, error) {
 	if err := rlimit.RemoveMemlock(); err != nil {
 		return nil, fmt.Errorf("removing memlock: %w", err)
 	}
@@ -77,7 +90,15 @@ func Load(p *profiles.Profile, objPath string) (*Loader, error) {
 		return nil, fmt.Errorf("loading BPF objects: %w", err)
 	}
 
-	l := &Loader{objs: objs, bootWallTime: bootWallTime(), entryComm: p.EntryComm}
+	l := &Loader{
+		objs:         objs,
+		bootWallTime: bootWallTime(),
+		entryComm:    p.EntryComm,
+		eventCh:      make(chan events.Event, 256),
+		errCh:        make(chan error, 2),
+		doneCh:       make(chan struct{}),
+	}
+
 	if err := l.populateMaps(p); err != nil {
 		_ = l.Close()
 		return nil, fmt.Errorf("populating BPF maps: %w", err)
@@ -99,8 +120,93 @@ func Load(p *profiles.Profile, objPath string) (*Loader, error) {
 		return nil, fmt.Errorf("creating ring buffer reader: %w", err)
 	}
 	l.reader = reader
+	l.wg.Add(1)
+	go l.drainRingbuf(l.reader, false)
+
+	if sslBinaryPath != "" {
+		if err := l.attachSSLUprobes(sslBinaryPath); err != nil {
+			fmt.Fprintf(os.Stderr, "vigil: warning: attaching SSL uprobes: %v\n", err)
+		} else if objs.SSLEvents != nil {
+			sslReader, err := ringbuf.NewReader(objs.SSLEvents)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "vigil: warning: creating SSL ring buffer reader: %v\n", err)
+			} else {
+				l.sslReader = sslReader
+				l.wg.Add(1)
+				go l.drainRingbuf(l.sslReader, true)
+			}
+		}
+	}
 
 	return l, nil
+}
+
+// attachSSLUprobes attaches uprobe/uretprobe programs to SSL_write and SSL_read
+// in the given binary (typically a libssl.so path).
+func (l *Loader) attachSSLUprobes(sslBinaryPath string) error {
+	ex, err := link.OpenExecutable(sslBinaryPath)
+	if err != nil {
+		return fmt.Errorf("opening executable %q: %w", sslBinaryPath, err)
+	}
+
+	if l.objs.UprobeSSLWrite != nil {
+		lnk, err := ex.Uprobe("SSL_write", l.objs.UprobeSSLWrite, nil)
+		if err != nil {
+			return fmt.Errorf("attaching uprobe SSL_write: %w", err)
+		}
+		l.links = append(l.links, lnk)
+	}
+
+	if l.objs.UprobeSSLReadEntry != nil {
+		lnk, err := ex.Uprobe("SSL_read", l.objs.UprobeSSLReadEntry, nil)
+		if err != nil {
+			return fmt.Errorf("attaching uprobe SSL_read entry: %w", err)
+		}
+		l.links = append(l.links, lnk)
+	}
+
+	if l.objs.UretprobeSSLRead != nil {
+		lnk, err := ex.Uretprobe("SSL_read", l.objs.UretprobeSSLRead, nil)
+		if err != nil {
+			return fmt.Errorf("attaching uretprobe SSL_read: %w", err)
+		}
+		l.links = append(l.links, lnk)
+	}
+
+	return nil
+}
+
+// drainRingbuf reads from reader and forwards decoded events to eventCh.
+// isSSL determines which decoder is used.
+func (l *Loader) drainRingbuf(reader *ringbuf.Reader, isSSL bool) {
+	defer l.wg.Done()
+	for {
+		rec, err := reader.Read()
+		if err != nil {
+			if err != ringbuf.ErrClosed {
+				select {
+				case l.errCh <- err:
+				default:
+				}
+			}
+			return
+		}
+		var e events.Event
+		var decErr error
+		if isSSL {
+			e, decErr = decodeSSLEvent(rec.RawSample, l.bootWallTime)
+		} else {
+			e, decErr = decodeEvent(rec.RawSample, l.bootWallTime)
+		}
+		if decErr != nil {
+			continue
+		}
+		select {
+		case l.eventCh <- e:
+		case <-l.doneCh:
+			return
+		}
+	}
 }
 
 // populateMaps converts profile rules into BPF map entries.
@@ -194,11 +300,15 @@ func (l *Loader) attach() error {
 
 // ReadEvent blocks until the next kernel event arrives and decodes it.
 func (l *Loader) ReadEvent() (events.Event, error) {
-	rec, err := l.reader.Read()
-	if err != nil {
+	select {
+	case e, ok := <-l.eventCh:
+		if !ok {
+			return events.Event{}, fmt.Errorf("loader closed")
+		}
+		return e, nil
+	case err := <-l.errCh:
 		return events.Event{}, err
 	}
-	return decodeEvent(rec.RawSample, l.bootWallTime)
 }
 
 // seedWatchedPids scans /proc for existing processes that belong to the agent's
@@ -312,31 +422,44 @@ func (l *Loader) expandProcTree(roots []uint32) []uint32 {
 
 // Close detaches all hooks, closes maps, and frees resources.
 func (l *Loader) Close() error {
-	if l.reader != nil {
-		_ = l.reader.Close()
-	}
-	for _, lnk := range l.links {
-		_ = lnk.Close()
-	}
-	closeObj := func(c io.Closer) {
-		if c != nil {
-			_ = c.Close()
+	l.closeOnce.Do(func() {
+		close(l.doneCh)
+		if l.reader != nil {
+			_ = l.reader.Close()
 		}
-	}
-	closeObj(l.objs.Events)
-	closeObj(l.objs.BlockedPaths)
-	closeObj(l.objs.BlockedIPv4)
-	closeObj(l.objs.EntryComm)
-	closeObj(l.objs.WatchedPids)
-	closeObj(l.objs.TraceOpenat)
-	closeObj(l.objs.TraceExecve)
-	closeObj(l.objs.TraceConnect)
-	closeObj(l.objs.TraceExecLineage)
-	closeObj(l.objs.TraceForkLineage)
-	closeObj(l.objs.TraceExitLineage)
-	closeObj(l.objs.LsmFileOpen)
-	closeObj(l.objs.LsmSocketConnect)
-	closeObj(l.objs.LsmBprmCheck)
+		if l.sslReader != nil {
+			_ = l.sslReader.Close()
+		}
+		l.wg.Wait()
+		close(l.eventCh)
+		for _, lnk := range l.links {
+			_ = lnk.Close()
+		}
+		closeObj := func(c io.Closer) {
+			if c != nil {
+				_ = c.Close()
+			}
+		}
+		closeObj(l.objs.Events)
+		closeObj(l.objs.SSLEvents)
+		closeObj(l.objs.SSLReadArgs)
+		closeObj(l.objs.BlockedPaths)
+		closeObj(l.objs.BlockedIPv4)
+		closeObj(l.objs.EntryComm)
+		closeObj(l.objs.WatchedPids)
+		closeObj(l.objs.TraceOpenat)
+		closeObj(l.objs.TraceExecve)
+		closeObj(l.objs.TraceConnect)
+		closeObj(l.objs.TraceExecLineage)
+		closeObj(l.objs.TraceForkLineage)
+		closeObj(l.objs.TraceExitLineage)
+		closeObj(l.objs.LsmFileOpen)
+		closeObj(l.objs.LsmSocketConnect)
+		closeObj(l.objs.LsmBprmCheck)
+		closeObj(l.objs.UprobeSSLWrite)
+		closeObj(l.objs.UprobeSSLReadEntry)
+		closeObj(l.objs.UretprobeSSLRead)
+	})
 	return nil
 }
 
@@ -363,28 +486,83 @@ func pathKey(path string) [256]byte {
 
 // decodeEvent parses the raw bytes from the ring buffer into an events.Event.
 // Layout must match struct event in bpf/headers/common.h.
+// New layout (320 bytes):
+//
+//	[0:8]    timestamp_ns
+//	[8:12]   pid
+//	[12:16]  tgid
+//	[16:20]  ppid  (NEW)
+//	[20]     event_type
+//	[21]     action
+//	[22:24]  _pad
+//	[24:40]  comm
+//	[40:296] path
+//	[296:300] dest_ip4
+//	[300:316] dest_ip6
+//	[316:318] dest_port
+//	[318]    is_ipv6
+//	[319]    _pad2
 func decodeEvent(raw []byte, bootWall time.Time) (events.Event, error) {
-	if len(raw) < 32 {
+	if len(raw) < 320 {
 		return events.Event{}, fmt.Errorf("raw event too short: %d bytes", len(raw))
 	}
 
 	var e events.Event
 	tsNs := binary.LittleEndian.Uint64(raw[0:8])
 	e.Timestamp = bootWall.Add(time.Duration(tsNs))
-	e.PID = binary.LittleEndian.Uint32(raw[8:12])
+	e.PID  = binary.LittleEndian.Uint32(raw[8:12])
 	// tgid at [12:16] — unused by caller
-	e.Type = events.Type(raw[16])
-	// action at [17], pad [18:20]
-	e.Comm = nullStr(raw[20:36])
-	e.Path = nullStr(raw[36:292])
+	e.PPID = binary.LittleEndian.Uint32(raw[16:20])
+	e.Type = events.Type(raw[20])
+	// action at [21], pad [22:24]
+	e.Comm = nullStr(raw[24:40])
+	e.Path = nullStr(raw[40:296])
 
-	destIP4 := binary.LittleEndian.Uint32(raw[292:296])
-	e.DestPort = binary.LittleEndian.Uint16(raw[312:314])
+	destIP4 := binary.LittleEndian.Uint32(raw[296:300])
+	e.DestPort = binary.LittleEndian.Uint16(raw[316:318])
 
 	if destIP4 != 0 {
 		b := make([]byte, 4)
 		binary.BigEndian.PutUint32(b, destIP4)
 		e.DestIP = net.IP(b)
+	}
+
+	return e, nil
+}
+
+// decodeSSLEvent parses the raw bytes from the ssl_events ring buffer.
+// Layout must match struct ssl_event in bpf/headers/common.h.
+// Layout (4140 bytes):
+//
+//	[0:8]    timestamp_ns
+//	[8:12]   pid
+//	[12:16]  tgid
+//	[16:20]  ppid
+//	[20]     direction
+//	[21:24]  _pad
+//	[24:40]  comm
+//	[40:44]  data_len
+//	[44:4140] data
+func decodeSSLEvent(raw []byte, bootWall time.Time) (events.Event, error) {
+	if len(raw) < 44 {
+		return events.Event{}, fmt.Errorf("raw ssl event too short: %d bytes", len(raw))
+	}
+
+	var e events.Event
+	e.Type = events.SSLData
+	tsNs := binary.LittleEndian.Uint64(raw[0:8])
+	e.Timestamp = bootWall.Add(time.Duration(tsNs))
+	e.PID  = binary.LittleEndian.Uint32(raw[8:12])
+	// tgid at [12:16]
+	e.PPID      = binary.LittleEndian.Uint32(raw[16:20])
+	e.Direction = events.SSLDirection(raw[20])
+	e.Comm      = nullStr(raw[24:40])
+	dataLen    := binary.LittleEndian.Uint32(raw[40:44])
+	if dataLen > 4096 {
+		dataLen = 4096
+	}
+	if dataLen > 0 && len(raw) >= 44+int(dataLen) {
+		e.Data = string(raw[44 : 44+dataLen])
 	}
 
 	return e, nil
