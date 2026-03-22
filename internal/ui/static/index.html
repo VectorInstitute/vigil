@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>vigil</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0d1117;
+      --surface:   #161c26;
+      --raised:    #1c2333;
+      --border:    #21293b;
+      --text:      #cdd6f4;
+      --muted:     #6b7a99;
+      --red:       #f38ba8;
+      --red-dim:   #3d1a24;
+      --green:     #a6e3a1;
+      --green-dim: #1a3020;
+      --blue:      #89b4fa;
+      --orange:    #fab387;
+      --purple:    #cba6f7;
+      --yellow:    #f9e2af;
+      --radius:    6px;
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      font-size: 13px;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      flex-shrink: 0;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      color: var(--text);
+    }
+
+    .logo-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .logo-dot.offline { background: var(--muted); box-shadow: none; animation: none; }
+
+    .profile-badge {
+      background: var(--raised);
+      border: 1px solid var(--border);
+      color: var(--blue);
+      padding: 2px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      letter-spacing: 0.5px;
+    }
+
+    .stats {
+      margin-left: auto;
+      display: flex;
+      gap: 20px;
+      align-items: center;
+    }
+
+    .stat {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1px;
+    }
+
+    .stat-value {
+      font-size: 18px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .stat-label {
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+    }
+
+    .stat-value.total  { color: var(--text); }
+    .stat-value.blocks { color: var(--red); }
+    .stat-value.allows { color: var(--green); }
+
+    .conn-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--muted);
+      padding: 4px 10px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+    }
+
+    .conn-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+    }
+
+    .conn-dot.offline { background: var(--red); }
+
+    /* ── Toolbar ── */
+    .toolbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 8px 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+      flex-wrap: wrap;
+    }
+
+    .filter-group {
+      display: flex;
+      gap: 4px;
+    }
+
+    .filter-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 4px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+      font-family: inherit;
+      letter-spacing: 0.5px;
+      transition: all 0.1s;
+    }
+
+    .filter-btn:hover { border-color: var(--muted); color: var(--text); }
+
+    .filter-btn.active {
+      color: var(--text);
+      border-color: var(--text);
+      background: var(--raised);
+    }
+
+    .filter-btn.action-block.active { color: var(--red); border-color: var(--red); }
+    .filter-btn.action-allow.active { color: var(--green); border-color: var(--green); }
+    .filter-btn.type-file.active    { color: var(--blue); border-color: var(--blue); }
+    .filter-btn.type-exec.active    { color: var(--orange); border-color: var(--orange); }
+    .filter-btn.type-net.active     { color: var(--purple); border-color: var(--purple); }
+
+    .divider { width: 1px; background: var(--border); align-self: stretch; margin: 0 4px; }
+
+    .clear-btn {
+      margin-left: auto;
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 4px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+      font-family: inherit;
+      transition: all 0.1s;
+    }
+    .clear-btn:hover { border-color: var(--red); color: var(--red); }
+
+    /* ── Event table ── */
+    .table-container {
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+
+    thead {
+      position: sticky;
+      top: 0;
+      background: var(--raised);
+      z-index: 10;
+    }
+
+    th {
+      padding: 8px 12px;
+      text-align: left;
+      font-size: 10px;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      font-weight: 500;
+    }
+
+    th.col-time    { width: 70px; }
+    th.col-pid     { width: 60px; }
+    th.col-process { width: 120px; }
+    th.col-type    { width: 70px; }
+    th.col-detail  { } /* fills remaining space */
+    th.col-action  { width: 75px; text-align: right; }
+
+    td {
+      padding: 6px 12px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    tr.row-block {
+      border-left: 3px solid var(--red);
+      background: var(--red-dim);
+    }
+
+    tr.row-block:hover { background: #4a1f2c; }
+
+    tr.row-allow { border-left: 3px solid transparent; }
+    tr.row-allow:hover { background: var(--raised); }
+
+    .time-cell { color: var(--muted); font-size: 11px; }
+
+    .pid-cell { color: var(--muted); font-size: 11px; }
+
+    .process-cell {
+      color: var(--yellow);
+      font-weight: 500;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+
+    .badge-file { background: #1a2a3a; color: var(--blue); }
+    .badge-exec { background: #2a1f10; color: var(--orange); }
+    .badge-net  { background: #1f1a2a; color: var(--purple); }
+
+    .detail-cell { color: var(--text); font-size: 12px; }
+    .detail-cell .dest { color: var(--purple); }
+
+    .action-cell { text-align: right; }
+
+    .action-block {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 3px;
+      background: var(--red-dim);
+      color: var(--red);
+      border: 1px solid var(--red);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    .action-allow {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 3px;
+      color: var(--green);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+
+    /* ── Empty state ── */
+    .empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 60px 20px;
+      color: var(--muted);
+      gap: 12px;
+    }
+
+    .empty-icon { font-size: 32px; opacity: 0.4; }
+    .empty-text { font-size: 13px; }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-dot" id="liveDot"></div>
+    vigil
+  </div>
+  <div class="profile-badge" id="profileBadge">loading…</div>
+  <div class="stats">
+    <div class="stat"><span class="stat-value total" id="statTotal">0</span><span class="stat-label">total</span></div>
+    <div class="stat"><span class="stat-value blocks" id="statBlocked">0</span><span class="stat-label">blocked</span></div>
+    <div class="stat"><span class="stat-value allows" id="statAllowed">0</span><span class="stat-label">allowed</span></div>
+  </div>
+  <div class="conn-status">
+    <div class="conn-dot" id="connDot"></div>
+    <span id="connLabel">connecting</span>
+  </div>
+</header>
+
+<div class="toolbar">
+  <div class="filter-group" id="actionFilters">
+    <button class="filter-btn active" data-filter="action" data-value="all">ALL</button>
+    <button class="filter-btn action-block" data-filter="action" data-value="BLOCK">BLOCK</button>
+    <button class="filter-btn action-allow" data-filter="action" data-value="ALLOW">ALLOW</button>
+  </div>
+  <div class="divider"></div>
+  <div class="filter-group" id="typeFilters">
+    <button class="filter-btn type-file" data-filter="type" data-value="file_open">FILE</button>
+    <button class="filter-btn type-exec" data-filter="type" data-value="exec">EXEC</button>
+    <button class="filter-btn type-net" data-filter="type" data-value="net_connect">NET</button>
+  </div>
+  <button class="clear-btn" id="clearBtn">clear</button>
+</div>
+
+<div class="table-container" id="tableContainer">
+  <div class="empty" id="emptyState">
+    <div class="empty-icon">◈</div>
+    <div class="empty-text">waiting for events…</div>
+  </div>
+  <table id="eventsTable" style="display:none">
+    <thead>
+      <tr>
+        <th class="col-time">time</th>
+        <th class="col-pid">pid</th>
+        <th class="col-process">process</th>
+        <th class="col-type">type</th>
+        <th class="col-detail">detail</th>
+        <th class="col-action">action</th>
+      </tr>
+    </thead>
+    <tbody id="eventsBody"></tbody>
+  </table>
+</div>
+
+<script>
+  const MAX_ROWS = 500;
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  let allEvents = [];
+  let filterAction = 'all';
+  let filterType   = null;
+  let total = 0, blocked = 0, allowed = 0;
+
+  // ── DOM refs ───────────────────────────────────────────────────────────────
+  const liveDot     = document.getElementById('liveDot');
+  const profileBadge = document.getElementById('profileBadge');
+  const connDot     = document.getElementById('connDot');
+  const connLabel   = document.getElementById('connLabel');
+  const statTotal   = document.getElementById('statTotal');
+  const statBlocked = document.getElementById('statBlocked');
+  const statAllowed = document.getElementById('statAllowed');
+  const eventsTable = document.getElementById('eventsTable');
+  const eventsBody  = document.getElementById('eventsBody');
+  const emptyState  = document.getElementById('emptyState');
+  const clearBtn    = document.getElementById('clearBtn');
+
+  // ── Relative time ──────────────────────────────────────────────────────────
+  function relTime(isoStr) {
+    const diff = Math.floor((Date.now() - new Date(isoStr)) / 1000);
+    if (diff < 5)  return 'just now';
+    if (diff < 60) return diff + 's';
+    if (diff < 3600) return Math.floor(diff/60) + 'm';
+    return Math.floor(diff/3600) + 'h';
+  }
+
+  // Update all relative timestamps every 5s.
+  setInterval(() => {
+    document.querySelectorAll('[data-ts]').forEach(el => {
+      el.textContent = relTime(el.dataset.ts);
+    });
+  }, 5000);
+
+  // ── Render one row ─────────────────────────────────────────────────────────
+  function typeBadge(evt) {
+    const map = {
+      file_open:   ['FILE', 'badge-file'],
+      exec:        ['EXEC', 'badge-exec'],
+      net_connect: ['NET',  'badge-net'],
+    };
+    const [label, cls] = map[evt.event] || [evt.event, ''];
+    return `<span class="badge ${cls}">${label}</span>`;
+  }
+
+  function detail(evt) {
+    if (evt.event === 'net_connect') {
+      const ip = evt.dest_ip || '';
+      const port = evt.dest_port || '';
+      return `<span class="dest">${ip}:${port}</span>`;
+    }
+    return evt.path || '';
+  }
+
+  function makeRow(evt) {
+    const isBlock = evt.action === 'BLOCK';
+    const tr = document.createElement('tr');
+    tr.className = isBlock ? 'row-block' : 'row-allow';
+    tr.dataset.action = evt.action;
+    tr.dataset.event  = evt.event;
+    tr.title = evt.reason || '';
+
+    tr.innerHTML = `
+      <td class="time-cell" data-ts="${evt.ts}">${relTime(evt.ts)}</td>
+      <td class="pid-cell">${evt.pid}</td>
+      <td class="process-cell">${escHtml(evt.comm)}</td>
+      <td>${typeBadge(evt)}</td>
+      <td class="detail-cell">${detail(evt)}</td>
+      <td class="action-cell">
+        ${isBlock
+          ? `<span class="action-block">BLOCK</span>`
+          : `<span class="action-allow">ALLOW</span>`}
+      </td>`;
+    return tr;
+  }
+
+  function escHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  // ── Filter & display ───────────────────────────────────────────────────────
+  function rowVisible(tr) {
+    if (filterAction !== 'all' && tr.dataset.action !== filterAction) return false;
+    if (filterType && tr.dataset.event !== filterType) return false;
+    return true;
+  }
+
+  function applyFilters() {
+    let visible = 0;
+    eventsBody.querySelectorAll('tr').forEach(tr => {
+      const show = rowVisible(tr);
+      tr.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+    emptyState.style.display  = visible === 0 ? 'flex' : 'none';
+    eventsTable.style.display = visible === 0 ? 'none' : '';
+  }
+
+  // ── Add event ──────────────────────────────────────────────────────────────
+  function addEvent(evt) {
+    total++;
+    if (evt.action === 'BLOCK') blocked++; else allowed++;
+    statTotal.textContent   = total;
+    statBlocked.textContent = blocked;
+    statAllowed.textContent = allowed;
+
+    const tr = makeRow(evt);
+    eventsBody.insertBefore(tr, eventsBody.firstChild);
+
+    // trim oldest rows
+    while (eventsBody.children.length > MAX_ROWS) {
+      eventsBody.removeChild(eventsBody.lastChild);
+    }
+
+    if (rowVisible(tr)) {
+      emptyState.style.display  = 'none';
+      eventsTable.style.display = '';
+    } else {
+      tr.style.display = 'none';
+    }
+  }
+
+  // ── Filters ────────────────────────────────────────────────────────────────
+  document.querySelectorAll('[data-filter="action"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-filter="action"]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      filterAction = btn.dataset.value;
+      applyFilters();
+    });
+  });
+
+  document.querySelectorAll('[data-filter="type"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const val = btn.dataset.value;
+      if (filterType === val) {
+        btn.classList.remove('active');
+        filterType = null;
+      } else {
+        document.querySelectorAll('[data-filter="type"]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        filterType = val;
+      }
+      applyFilters();
+    });
+  });
+
+  clearBtn.addEventListener('click', () => {
+    eventsBody.innerHTML = '';
+    total = blocked = allowed = 0;
+    statTotal.textContent = statBlocked.textContent = statAllowed.textContent = 0;
+    emptyState.style.display  = 'flex';
+    eventsTable.style.display = 'none';
+  });
+
+  // ── SSE connection ─────────────────────────────────────────────────────────
+  // Use relative URL so this works behind the Coder app proxy.
+  function connect() {
+    const base = new URL('.', window.location.href).href;
+    const src  = new EventSource(new URL('events', base).href);
+
+    src.addEventListener('connected', () => {
+      connDot.classList.remove('offline');
+      connLabel.textContent = 'live';
+      liveDot.classList.remove('offline');
+    });
+
+    src.onmessage = e => {
+      try { addEvent(JSON.parse(e.data)); } catch (_) {}
+    };
+
+    src.onerror = () => {
+      connDot.classList.add('offline');
+      connLabel.textContent = 'reconnecting';
+      liveDot.classList.add('offline');
+    };
+  }
+
+  // ── Load status ────────────────────────────────────────────────────────────
+  async function loadStatus() {
+    try {
+      const base = new URL('.', window.location.href).href;
+      const r = await fetch(new URL('api/status', base).href);
+      const d = await r.json();
+      profileBadge.textContent = d.profile || 'unknown';
+    } catch (_) {
+      profileBadge.textContent = 'unknown';
+    }
+  }
+
+  loadStatus();
+  connect();
+</script>
+</body>
+</html>

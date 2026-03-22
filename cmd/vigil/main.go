@@ -2,12 +2,14 @@ package main
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 
 	"github.com/VectorInstitute/vigil/internal/audit"
 	"github.com/VectorInstitute/vigil/internal/detector"
 	"github.com/VectorInstitute/vigil/internal/loader"
 	"github.com/VectorInstitute/vigil/internal/profiles"
+	"github.com/VectorInstitute/vigil/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -26,12 +28,16 @@ var watchFlags struct {
 	framework string
 	profile   string
 	bpfObj    string
+	uiEnabled bool
+	uiPort    int
 }
 
 func init() {
 	watchCmd.Flags().StringVar(&watchFlags.framework, "framework", "ollama", "AI framework profile to use (ollama, vllm, llamacpp)")
 	watchCmd.Flags().StringVar(&watchFlags.profile, "profile", "", "Path to a custom profile YAML (overrides --framework)")
 	watchCmd.Flags().StringVar(&watchFlags.bpfObj, "bpf-obj", "/usr/lib/vigil/vigil.bpf.o", "Path to compiled eBPF object file")
+	watchCmd.Flags().BoolVar(&watchFlags.uiEnabled, "ui", false, "Start the real-time web UI")
+	watchCmd.Flags().IntVar(&watchFlags.uiPort, "port", 7394, "Port to serve the web UI on (requires --ui)")
 	rootCmd.AddCommand(watchCmd)
 	rootCmd.AddCommand(profileCmd)
 }
@@ -59,6 +65,18 @@ func runWatch(cmd *cobra.Command, _ []string) error {
 	det := detector.New(p)
 	log := audit.New(cmd.OutOrStdout())
 
+	var uiServer *ui.Server
+	if watchFlags.uiEnabled {
+		uiServer = ui.New(p.Name)
+		go func() {
+			addr := fmt.Sprintf(":%d", watchFlags.uiPort)
+			fmt.Fprintf(cmd.OutOrStdout(), "vigil: UI available at http://localhost%s\n", addr)
+			if err := http.ListenAndServe(addr, uiServer.Handler()); err != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(), "vigil: UI server error: %v\n", err)
+			}
+		}()
+	}
+
 	fmt.Fprintf(cmd.OutOrStdout(), "vigil: watching — press Ctrl+C to stop\n")
 
 	for {
@@ -71,6 +89,9 @@ func runWatch(cmd *cobra.Command, _ []string) error {
 			_ = l.BlockIP(e.DestIP) // add to kernel block map for future connections
 		}
 		log.Log(dec)
+		if uiServer != nil {
+			uiServer.Broadcast(dec)
+		}
 	}
 }
 

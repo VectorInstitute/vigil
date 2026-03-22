@@ -72,6 +72,14 @@ resource "coder_agent" "main" {
     sudo cp -r profiles /usr/lib/vigil/profiles
     echo "vigil installed"
 
+    # Start vigil with the web UI on port 7394 in background
+    # Default to claude-code profile; user can restart with a different one.
+    sudo vigil watch \
+      --profile /usr/lib/vigil/profiles/claude-code.yaml \
+      --ui --port 7394 \
+      >> /tmp/vigil-watch.log 2>&1 &
+    echo "vigil started — UI on port 7394"
+
     # Configure shell to always start in repo
     if ! grep -q "auto-cd vigil" "/home/${local.username}/.bashrc" 2>/dev/null; then
       cat >> "/home/${local.username}/.bashrc" <<'BASHRC'
@@ -117,6 +125,18 @@ BASHRC
     interval     = 60
     timeout      = 2
   }
+}
+
+resource "coder_app" "vigil_ui" {
+  count        = data.coder_workspace.me.start_count
+  agent_id     = coder_agent.main.id
+  slug         = "vigil-ui"
+  display_name = "vigil"
+  url          = "http://localhost:7394"
+  icon         = "/icon/widgets.svg"
+  subdomain    = false
+  share        = "owner"
+  order        = 2
 }
 
 module "github-upload-public-key" {
