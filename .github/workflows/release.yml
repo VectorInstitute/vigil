@@ -82,29 +82,53 @@ jobs:
           echo "TARBALL=vigil-${TAG}-linux-amd64.tar.gz" >> $GITHUB_ENV
           echo "TAG=${TAG}" >> $GITHUB_ENV
 
+      - name: Generate release notes from git log
+        id: notes
+        run: |
+          # Find the previous tag to compute the range
+          PREV=$(git tag --sort=-version:refname | grep -v "^${{ github.ref_name }}$" | head -1)
+          if [ -n "$PREV" ]; then
+            RANGE="${PREV}..${{ github.ref_name }}"
+          else
+            RANGE="${{ github.ref_name }}"
+          fi
+
+          # Build a human-readable changelog from commit messages
+          COMMITS=$(git log "$RANGE" --no-merges --pretty=format:"- %s" 2>/dev/null || echo "")
+          echo "PREV_TAG=${PREV}" >> $GITHUB_ENV
+
+          # Write notes to a temp file to avoid quoting issues
+          cat > /tmp/release-notes.md << NOTES
+          ## What's new
+
+          ${COMMITS}
+
+          ## Install
+
+          \`\`\`bash
+          curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/install.sh | sudo bash
+          \`\`\`
+
+          Or download the tarball and run \`sudo ./install.sh\` manually.
+
+          ## What's included
+
+          - \`vigil\` — daemon binary (amd64 and arm64)
+          - \`vigil.bpf.o\` — eBPF object (CO-RE, runs on any kernel ≥ 5.15 with BTF)
+          - \`profiles/\` — built-in profiles: claude-code, gemini-cli, ollama
+
+          ## Requirements
+
+          - Linux x86_64 or arm64, kernel ≥ 5.15 with \`CONFIG_BPF_LSM=y\`
+          - \`lsm=bpf\` in kernel boot parameters
+          NOTES
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           name: vigil ${{ github.ref_name }}
-          body: |
-            ## Install
-
-            ```bash
-            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/install.sh | sudo bash
-            ```
-
-            Or download the tarball and run `sudo ./install.sh` manually.
-
-            ## What's included
-
-            - `vigil` — daemon binary
-            - `vigil.bpf.o` — eBPF object (CO-RE, works on any Linux kernel with BTF support)
-            - `profiles/` — built-in profiles for claude-code, gemini-cli, ollama
-
-            ## Requirements
-
-            - Linux x86_64, kernel ≥ 5.15 with `CONFIG_BPF_LSM=y`
-            - `lsm=bpf` in kernel boot parameters (see [setup guide](deploy/README.md))
+          body_path: /tmp/release-notes.md
+          generate_release_notes: false
           files: |
             ${{ env.TARBALL }}
             vigil-linux-amd64
