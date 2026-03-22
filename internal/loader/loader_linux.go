@@ -7,6 +7,10 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/VectorInstitute/vigil/internal/events"
@@ -78,6 +82,12 @@ func Load(p *profiles.Profile, objPath string) (*Loader, error) {
 		_ = l.Close()
 		return nil, fmt.Errorf("populating BPF maps: %w", err)
 	}
+	// Seed watched_pids BEFORE attaching BPF programs so that when the LSM hooks
+	// go live they already have all pre-existing agent processes in the map.
+	if err := l.seedWatchedPids(); err != nil {
+		// Non-fatal: BPF hooks will catch new sessions; log and continue.
+		fmt.Fprintf(os.Stderr, "vigil: warning: seeding watched_pids: %v\n", err)
+	}
 	if err := l.attach(); err != nil {
 		_ = l.Close()
 		return nil, fmt.Errorf("attaching BPF programs: %w", err)
@@ -144,8 +154,12 @@ func (l *Loader) attach() error {
 			return link.Tracepoint("syscalls", "sys_enter_connect", p, nil)
 		}},
 		// Process lineage tracepoints (always attached; entry_comm controls activity)
+		// TraceExecLineage hooks sys_enter_execve (not sched_process_exec) so it
+		// fires with the original filename BEFORE shebang processing. This allows
+		// matching execve("/usr/bin/gemini") even though the process ultimately
+		// runs as node after shebang interpretation.
 		{l.objs.TraceExecLineage, func(p *ebpf.Program) (link.Link, error) {
-			return link.Tracepoint("sched", "sched_process_exec", p, nil)
+			return link.Tracepoint("syscalls", "sys_enter_execve", p, nil)
 		}},
 		{l.objs.TraceForkLineage, func(p *ebpf.Program) (link.Link, error) {
 			return link.Tracepoint("sched", "sched_process_fork", p, nil)
@@ -185,6 +199,115 @@ func (l *Loader) ReadEvent() (events.Event, error) {
 		return events.Event{}, err
 	}
 	return decodeEvent(rec.RawSample, l.bootWallTime)
+}
+
+// seedWatchedPids scans /proc for existing processes that belong to the agent's
+// process tree and adds them to watched_pids. This handles the case where the
+// agent was already running when vigil started, or where the agent's entry
+// binary is a shebang script whose final exec has a different comm name
+// (e.g. gemini invokes node, so sched_process_exec fires with comm="node",
+// not "gemini"). We match by checking if any argument in the process cmdline
+// has a basename matching entry_comm.
+func (l *Loader) seedWatchedPids() error {
+	if l.entryComm == "" || l.objs.WatchedPids == nil {
+		return nil
+	}
+
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return fmt.Errorf("reading /proc: %w", err)
+	}
+
+	// Collect PIDs whose cmdline contains entry_comm as a basename arg.
+	var roots []uint32
+	for _, e := range entries {
+		pid, err := strconv.Atoi(e.Name())
+		if err != nil {
+			continue
+		}
+		if l.cmdlineMatchesEntry(uint32(pid)) {
+			roots = append(roots, uint32(pid))
+		}
+	}
+
+	// Expand to the full descendant tree so fork children are also seeded.
+	all := l.expandProcTree(roots)
+	one := uint8(1)
+	for _, pid := range all {
+		_ = l.objs.WatchedPids.Put(pid, one)
+	}
+	return nil
+}
+
+// cmdlineMatchesEntry returns true if any argument in /proc/pid/cmdline has a
+// basename equal to entry_comm.
+func (l *Loader) cmdlineMatchesEntry(pid uint32) bool {
+	raw, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
+	if err != nil {
+		return false
+	}
+	return cmdlineMatchesEntryStr(l.entryComm, string(raw))
+}
+
+// cmdlineMatchesEntryStr is the testable core: returns true if any NUL-separated
+// arg in rawCmdline has a basename equal to entryComm.
+func cmdlineMatchesEntryStr(entryComm, rawCmdline string) bool {
+	if entryComm == "" {
+		return false
+	}
+	for _, arg := range strings.Split(rawCmdline, "\x00") {
+		if filepath.Base(arg) == entryComm {
+			return true
+		}
+	}
+	return false
+}
+
+// expandProcTree takes a set of root PIDs and returns them plus all
+// their transitive children found in /proc.
+func (l *Loader) expandProcTree(roots []uint32) []uint32 {
+	// Build a parent→[]child map from /proc.
+	children := map[uint32][]uint32{}
+	entries, _ := os.ReadDir("/proc")
+	for _, e := range entries {
+		pid, err := strconv.Atoi(e.Name())
+		if err != nil {
+			continue
+		}
+		statusBytes, err := os.ReadFile(fmt.Sprintf("/proc/%d/status", pid))
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(string(statusBytes), "\n") {
+			if !strings.HasPrefix(line, "PPid:") {
+				continue
+			}
+			ppid, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(line, "PPid:")))
+			if err == nil && ppid > 0 {
+				children[uint32(ppid)] = append(children[uint32(ppid)], uint32(pid))
+			}
+			break
+		}
+	}
+
+	// BFS from roots.
+	seen := map[uint32]bool{}
+	queue := append([]uint32(nil), roots...)
+	for len(queue) > 0 {
+		pid := queue[0]
+		queue = queue[1:]
+		if seen[pid] {
+			continue
+		}
+		seen[pid] = true
+		queue = append(queue, children[pid]...)
+	}
+
+	result := make([]uint32, 0, len(seen))
+	for pid := range seen {
+		result = append(result, pid)
+	}
+	return result
 }
 
 // Close detaches all hooks, closes maps, and frees resources.

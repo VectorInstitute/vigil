@@ -82,27 +82,50 @@ static __always_inline void emit_event(struct event *e) {
 
 // ── Process lineage tracepoints ───────────────────────────────────────────────
 
-// trace_exec_lineage: fires after a successful exec.
-// If the new comm matches entry_comm, add this PID to watched_pids.
-SEC("tracepoint/sched/sched_process_exec")
-int trace_exec_lineage(void *ctx) {
+// trace_exec_lineage: fires at sys_enter_execve, BEFORE the exec completes.
+// We check if the filename's basename (last path component) matches entry_comm.
+//
+// Using sys_enter_execve instead of sched_process_exec is essential for
+// shebang scripts: when the user runs `gemini` (a Node.js script), the kernel
+// ultimately execs `/usr/bin/node`, so sched_process_exec fires with comm="node".
+// But sys_enter_execve fires with the original filename="/usr/bin/gemini"
+// (basename="gemini"), which correctly matches entry_comm.
+//
+// We add the PID before exec completes, so there is zero window between process
+// start and tracking. If the exec fails (rare), the stale entry is cleaned up
+// when the process exits via trace_exit_lineage.
+SEC("tracepoint/syscalls/sys_enter_execve")
+int trace_exec_lineage(struct trace_event_raw_sys_enter *ctx) {
     __u32 z = 0;
     char *entry = bpf_map_lookup_elem(&entry_comm, &z);
     if (!entry || entry[0] == '\0')
         return 0; // lineage filtering disabled
 
-    char comm[MAX_COMM_LEN];
-    bpf_get_current_comm(comm, sizeof(comm));
+    // Read the filename being exec'd from userspace (ctx->args[0]).
+    char path[MAX_PATH_LEN] = {};
+    bpf_probe_read_user_str(path, sizeof(path), (const void *)ctx->args[0]);
 
-    // Compare comm with entry_comm byte by byte.
-    for (int i = 0; i < MAX_COMM_LEN; i++) {
-        if (entry[i] != comm[i])
-            return 0; // mismatch
-        if (entry[i] == '\0')
-            break; // matched up to null terminator
+    // Scan path comparing the last component (basename) against entry_comm.
+    // On each '/' we reset; mismatches in a component set e to a sentinel.
+    int e = 0;
+    for (int i = 0; i < MAX_PATH_LEN; i++) {
+        char c = path[i];
+        if (c == '\0')
+            break;
+        if (c == '/') {
+            e = 0; // start of new path component — reset
+            continue;
+        }
+        if (e < MAX_COMM_LEN && entry[e] == c)
+            e++;
+        else
+            e = MAX_COMM_LEN; // mismatch in this component
     }
+    // Exact basename match: we consumed all of entry_comm and hit end/slash.
+    if (e <= 0 || e >= MAX_COMM_LEN || entry[e] != '\0')
+        return 0;
 
-    // This process is the entry point — add to watched_pids.
+    // Filename basename matches entry_comm — add this PID to watched_pids.
     __u32 pid = bpf_get_current_pid_tgid() >> 32;
     __u8 one = 1;
     bpf_map_update_elem(&watched_pids, &pid, &one, BPF_ANY);
@@ -129,12 +152,17 @@ int trace_fork_lineage(struct trace_event_raw_sched_process_fork *ctx) {
     return 0;
 }
 
-// trace_exit_lineage: fires when a process exits.
-// Remove the PID from watched_pids to prevent PID reuse false positives.
+// trace_exit_lineage: fires when a thread or process exits.
+// Remove the TGID from watched_pids only when the MAIN thread exits (TID==TGID).
+// Worker threads (TID != TGID) exiting must NOT evict the main process — doing
+// so would create a security hole where the remaining process is no longer tracked.
 SEC("tracepoint/sched/sched_process_exit")
 int trace_exit_lineage(void *ctx) {
-    __u32 pid = bpf_get_current_pid_tgid() >> 32;
-    bpf_map_delete_elem(&watched_pids, &pid);
+    __u64 id   = bpf_get_current_pid_tgid();
+    __u32 tgid = id >> 32;
+    __u32 tid  = (__u32)id;
+    if (tgid == tid) // only the main thread's exit means the process is gone
+        bpf_map_delete_elem(&watched_pids, &tgid);
     return 0;
 }
 

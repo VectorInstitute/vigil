@@ -10,6 +10,39 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// ── cmdlineMatchesEntry ───────────────────────────────────────────────────────
+
+func TestCmdlineMatchesEntry_basenameMatch(t *testing.T) {
+	l := &Loader{entryComm: "gemini"}
+	cases := []struct {
+		raw  string
+		want bool
+	}{
+		// Shebang script invoked via node: argv contains /usr/bin/gemini.
+		{"node\x00--no-warnings=DEP0040\x00/usr/bin/gemini\x00", true},
+		// Direct binary execution.
+		{"gemini\x00", true},
+		// Full path with no other args.
+		{"/usr/bin/gemini\x00", true},
+		// Unrelated process.
+		{"python3\x00script.py\x00", false},
+		// Prefix match must not trigger (gemini-cli ≠ gemini).
+		{"node\x00/usr/bin/gemini-cli\x00", false},
+		// Node without gemini.
+		{"node\x00/usr/bin/ollama\x00", false},
+	}
+	for _, tc := range cases {
+		got := cmdlineMatchesEntryStr(l.entryComm, tc.raw)
+		assert.Equal(t, tc.want, got, "cmdline=%q", tc.raw)
+	}
+}
+
+func TestCmdlineMatchesEntry_emptyEntryComm(t *testing.T) {
+	l := &Loader{entryComm: ""}
+	// Empty entry_comm → never matches (lineage tracking disabled).
+	assert.False(t, cmdlineMatchesEntryStr(l.entryComm, "gemini\x00"))
+}
+
 // TestBootWallTime verifies that bootWallTime() returns a time in the past
 // (the system booted before now) and is within a reasonable range.
 func TestBootWallTime(t *testing.T) {
