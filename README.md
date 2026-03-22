@@ -85,4 +85,4 @@ See [`docs/architecture.html`](docs/architecture.html) for the full diagram.
 
 ## Demo
 
-See [`deploy/`](deploy/) for a Coder workspace template that provisions a Ubuntu VM with vigil, Claude Code, and Gemini CLI, and runs live jailbreak blocking scenarios.
+See [`coder/`](coder/) for a Coder workspace template that provisions a Ubuntu VM with vigil, Claude Code, and Gemini CLI, and runs live jailbreak blocking scenarios.

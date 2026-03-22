@@ -18,3 +18,9 @@ test/e2e/target/target
 .vscode/
 *.swp
 *.swo
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.backup
+coder/coder-template/terraform.tfvars

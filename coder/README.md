@@ -13,7 +13,7 @@ The first workspace start triggers a one-time reboot to activate `lsm=bpf`. Subs
 ```bash
 # From the repo root
 gcloud builds submit \
-  --config deploy/docker/cloudbuild.yaml \
+  --config coder/docker/cloudbuild.yaml \
   --substitutions _PROJECT=coderd \
   .
 ```
@@ -23,7 +23,7 @@ The image is pushed to `us-central1-docker.pkg.dev/coderd/vigil/workspace:latest
 ## Deploy the Coder template
 
 ```bash
-cd deploy/coder-template
+cd coder/coder-template
 cp terraform.tfvars.example terraform.tfvars
 # Edit terraform.tfvars — set project, container_image, service_account_email
 terraform init

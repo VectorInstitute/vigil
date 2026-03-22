@@ -3,7 +3,7 @@ steps:
     args:
       - build
       - -f
-      - deploy/docker/Dockerfile
+      - coder/docker/Dockerfile
       - -t
       - ${_REGION}-docker.pkg.dev/${_PROJECT}/vigil/workspace:latest
       - .
