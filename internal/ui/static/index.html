@@ -149,7 +149,6 @@
       border-bottom: 1px solid var(--border);
       padding: 0 20px;
       display: flex;
-      gap: 0;
       flex-shrink: 0;
     }
 
@@ -169,11 +168,10 @@
     }
 
     .tab-btn:hover { color: var(--text); }
+    .tab-btn.active { color: var(--text); border-bottom-color: var(--blue); }
 
-    .tab-btn.active {
-      color: var(--text);
-      border-bottom-color: var(--blue);
-    }
+    /* blocked tab button gets red accent when there are blocks */
+    .tab-btn.has-blocks { border-bottom-color: var(--red); color: var(--red); }
 
     /* ── Tab content panels ── */
     .tab-panel { display: none; flex: 1; flex-direction: column; overflow: hidden; }
@@ -191,10 +189,7 @@
       flex-wrap: wrap;
     }
 
-    .filter-group {
-      display: flex;
-      gap: 4px;
-    }
+    .filter-group { display: flex; gap: 4px; }
 
     .filter-btn {
       background: none;
@@ -210,19 +205,13 @@
     }
 
     .filter-btn:hover { border-color: var(--muted); color: var(--text); }
-
-    .filter-btn.active {
-      color: var(--text);
-      border-color: var(--text);
-      background: var(--raised);
-    }
-
-    .filter-btn.action-block.active { color: var(--red); border-color: var(--red); }
-    .filter-btn.action-allow.active { color: var(--green); border-color: var(--green); }
-    .filter-btn.type-file.active    { color: var(--blue); border-color: var(--blue); }
+    .filter-btn.active { color: var(--text); border-color: var(--text); background: var(--raised); }
+    .filter-btn.action-block.active { color: var(--red);    border-color: var(--red); }
+    .filter-btn.action-allow.active { color: var(--green);  border-color: var(--green); }
+    .filter-btn.type-file.active    { color: var(--blue);   border-color: var(--blue); }
     .filter-btn.type-exec.active    { color: var(--orange); border-color: var(--orange); }
     .filter-btn.type-net.active     { color: var(--purple); border-color: var(--purple); }
-    .filter-btn.type-ssl.active     { color: var(--cyan); border-color: var(--cyan); }
+    .filter-btn.type-ssl.active     { color: var(--cyan);   border-color: var(--cyan); }
 
     .divider { width: 1px; background: var(--border); align-self: stretch; margin: 0 4px; }
 
@@ -241,16 +230,9 @@
     .clear-btn:hover { border-color: var(--red); color: var(--red); }
 
     /* ── Event table ── */
-    .table-container {
-      flex: 1;
-      overflow-y: auto;
-    }
+    .table-container { flex: 1; overflow-y: auto; }
 
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      table-layout: fixed;
-    }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 
     thead {
       position: sticky;
@@ -274,7 +256,7 @@
     th.col-pid     { width: 60px; }
     th.col-process { width: 120px; }
     th.col-type    { width: 70px; }
-    th.col-detail  { } /* fills remaining space */
+    th.col-detail  { }
     th.col-action  { width: 75px; text-align: right; }
 
     td {
@@ -289,21 +271,18 @@
     tr.row-block {
       border-left: 3px solid var(--red);
       background: var(--red-dim);
+      cursor: pointer;
     }
-
     tr.row-block:hover { background: #4a1f2c; }
 
-    tr.row-allow { border-left: 3px solid transparent; }
+    tr.row-allow { border-left: 3px solid transparent; cursor: pointer; }
     tr.row-allow:hover { background: var(--raised); }
 
-    .time-cell { color: var(--muted); font-size: 11px; }
+    tr.row-selected { outline: 1px solid var(--blue); }
 
-    .pid-cell { color: var(--muted); font-size: 11px; }
-
-    .process-cell {
-      color: var(--yellow);
-      font-weight: 500;
-    }
+    .time-cell    { color: var(--muted); font-size: 11px; }
+    .pid-cell     { color: var(--muted); font-size: 11px; }
+    .process-cell { color: var(--yellow); font-weight: 500; }
 
     .badge {
       display: inline-block;
@@ -362,172 +341,96 @@
     .empty-icon { font-size: 32px; opacity: 0.4; }
     .empty-text { font-size: 13px; }
 
-    /* ── Timeline tab ── */
-    .timeline-container {
+    /* ── Blocked tab ── */
+    .blocked-container {
       flex: 1;
       overflow-y: auto;
-      padding: 20px;
-    }
-
-    .timeline-axis {
+      padding: 16px 20px;
       display: flex;
-      justify-content: space-between;
-      padding: 0 0 8px 120px;
-      color: var(--muted);
-      font-size: 10px;
-      border-bottom: 1px solid var(--border);
-      margin-bottom: 12px;
+      flex-direction: column;
+      gap: 12px;
     }
 
-    .swimlane {
-      display: flex;
-      align-items: center;
-      margin-bottom: 10px;
-      height: 28px;
-    }
-
-    .swimlane-label {
-      width: 120px;
-      flex-shrink: 0;
-      font-size: 11px;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      padding-right: 12px;
-      text-align: right;
-    }
-
-    .swimlane-track {
-      flex: 1;
-      position: relative;
-      height: 100%;
-      background: var(--raised);
-      border-radius: 3px;
-      border: 1px solid var(--border);
+    .blocked-proc {
+      border: 1px solid var(--red);
+      border-radius: var(--radius);
       overflow: hidden;
     }
 
-    .tl-dot {
-      position: absolute;
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      top: 50%;
-      transform: translate(-50%, -50%);
-      cursor: pointer;
-      transition: transform 0.1s;
+    @keyframes flash-new {
+      0%   { background: #5a2030; }
+      100% { background: var(--red-dim); }
     }
 
-    .tl-dot:hover { transform: translate(-50%, -50%) scale(1.6); }
-    .tl-dot.allow { background: var(--green); box-shadow: 0 0 4px var(--green); }
-    .tl-dot.block { background: var(--red); box-shadow: 0 0 4px var(--red); }
+    .blocked-proc.flash { animation: flash-new 0.6s ease-out; }
 
-    .tl-tooltip {
-      position: fixed;
-      background: var(--raised);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      padding: 8px 12px;
-      font-size: 11px;
-      color: var(--text);
-      pointer-events: none;
-      z-index: 100;
-      white-space: nowrap;
-      display: none;
-    }
-
-    .tl-tooltip .tl-tt-row { margin-bottom: 2px; }
-    .tl-tooltip .tl-tt-label { color: var(--muted); margin-right: 6px; }
-
-    /* ── Process tree tab ── */
-    .proctree-container {
-      flex: 1;
-      overflow-y: auto;
-      padding: 20px;
-    }
-
-    .proc-node {
-      margin-bottom: 4px;
-    }
-
-    .proc-header {
+    .blocked-proc-header {
       display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 6px 10px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 4px;
+      gap: 10px;
+      padding: 10px 14px;
+      background: var(--red-dim);
       cursor: pointer;
-      transition: background 0.1s;
       user-select: none;
     }
 
-    .proc-header:hover { background: var(--raised); }
+    .blocked-proc-header:hover { background: #4a1f2c; }
 
-    .proc-toggle {
-      color: var(--muted);
-      font-size: 10px;
-      width: 12px;
-      flex-shrink: 0;
-    }
-
-    .proc-pid {
+    .blocked-proc-pid {
       background: var(--raised);
-      border: 1px solid var(--border);
-      color: var(--muted);
+      border: 1px solid var(--red);
+      color: var(--red);
       padding: 1px 6px;
       border-radius: 3px;
       font-size: 10px;
     }
 
-    .proc-comm {
+    .blocked-proc-comm {
       color: var(--yellow);
       font-weight: 600;
+      font-size: 13px;
+    }
+
+    .blocked-proc-ppid {
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .blocked-proc-badge {
+      margin-left: auto;
+      background: var(--red);
+      color: var(--bg);
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    .blocked-proc-hint {
+      font-size: 10px;
+      color: var(--muted);
+      margin-left: 4px;
+    }
+
+    .blocked-events {
+      border-top: 1px solid var(--border);
+    }
+
+    .blocked-event {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 7px 14px;
+      border-bottom: 1px solid var(--border);
       font-size: 12px;
     }
 
-    .proc-counts {
-      margin-left: auto;
-      display: flex;
-      gap: 8px;
-      font-size: 10px;
-    }
+    .blocked-event:last-child { border-bottom: none; }
 
-    .proc-count-total { color: var(--muted); }
-    .proc-count-block { color: var(--red); }
-
-    .proc-children {
-      margin-left: 24px;
-      margin-top: 4px;
-    }
-
-    .proc-events {
-      margin-top: 4px;
-      margin-left: 24px;
-      border-left: 2px solid var(--border);
-      padding-left: 8px;
-    }
-
-    .proc-event-row {
-      padding: 3px 0;
-      font-size: 11px;
-      color: var(--muted);
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      gap: 8px;
-      align-items: center;
-    }
-
-    .proc-event-row:last-child { border-bottom: none; }
-
-    .proc-event-type { color: var(--blue); width: 70px; flex-shrink: 0; }
-    .proc-event-type.exec { color: var(--orange); }
-    .proc-event-type.net_connect { color: var(--purple); }
-    .proc-event-type.ssl_data { color: var(--cyan); }
-    .proc-event-detail { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
-    .proc-event-action-block { color: var(--red); flex-shrink: 0; }
-    .proc-event-action-allow { color: var(--green); flex-shrink: 0; }
+    .blocked-event-time { color: var(--muted); font-size: 11px; width: 50px; flex-shrink: 0; }
+    .blocked-event-detail { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+    .blocked-event-reason { color: var(--muted); font-size: 11px; flex-shrink: 0; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
     /* ── Scrollbar ── */
     ::-webkit-scrollbar { width: 6px; }
@@ -546,7 +449,7 @@
   <div class="profile-badge" id="profileBadge">loading…</div>
   <div class="version-badge" id="versionBadge"></div>
   <div class="stats">
-    <div class="stat"><span class="stat-value total" id="statTotal">0</span><span class="stat-label">total</span></div>
+    <div class="stat"><span class="stat-value total"  id="statTotal">0</span><span class="stat-label">total</span></div>
     <div class="stat"><span class="stat-value blocks" id="statBlocked">0</span><span class="stat-label">blocked</span></div>
     <div class="stat"><span class="stat-value allows" id="statAllowed">0</span><span class="stat-label">allowed</span></div>
   </div>
@@ -556,28 +459,28 @@
   </div>
 </header>
 
-<!-- Tab bar -->
 <div class="tab-bar">
   <button class="tab-btn active" data-tab="log">Log</button>
-  <button class="tab-btn" data-tab="timeline">Timeline</button>
-  <button class="tab-btn" data-tab="proctree">Process Tree</button>
+  <button class="tab-btn" data-tab="blocked" id="blockedTabBtn">Blocked</button>
 </div>
 
 <!-- ── LOG TAB ── -->
 <div class="tab-panel active" id="panel-log">
   <div class="toolbar">
-    <div class="filter-group" id="actionFilters">
+    <div class="filter-group">
       <button class="filter-btn active" data-filter="action" data-value="all">ALL</button>
       <button class="filter-btn action-block" data-filter="action" data-value="BLOCK">BLOCK</button>
       <button class="filter-btn action-allow" data-filter="action" data-value="ALLOW">ALLOW</button>
     </div>
     <div class="divider"></div>
-    <div class="filter-group" id="typeFilters">
+    <div class="filter-group">
       <button class="filter-btn type-file" data-filter="type" data-value="file_open">FILE</button>
       <button class="filter-btn type-exec" data-filter="type" data-value="exec">EXEC</button>
-      <button class="filter-btn type-net" data-filter="type" data-value="net_connect">NET</button>
-      <button class="filter-btn type-ssl" data-filter="type" data-value="ssl_data">SSL</button>
+      <button class="filter-btn type-net"  data-filter="type" data-value="net_connect">NET</button>
+      <button class="filter-btn type-ssl"  data-filter="type" data-value="ssl_data">SSL</button>
     </div>
+    <span id="pidFilterLabel" style="display:none; font-size:11px; color:var(--muted); margin-left:8px;"></span>
+    <button id="clearPidFilter" style="display:none; font-size:11px; color:var(--muted); background:none; border:none; cursor:pointer; padding:2px 6px;">✕ clear pid filter</button>
     <button class="clear-btn" id="clearBtn">clear</button>
   </div>
 
@@ -602,69 +505,56 @@
   </div>
 </div>
 
-<!-- ── TIMELINE TAB ── -->
-<div class="tab-panel" id="panel-timeline">
-  <div class="timeline-container" id="timelineContainer">
-    <div class="empty" id="tlEmpty">
-      <div class="empty-icon">◈</div>
-      <div class="empty-text">no events yet</div>
-    </div>
-    <div id="tlContent" style="display:none">
-      <div class="timeline-axis" id="tlAxis"></div>
-      <div id="tlLanes"></div>
-    </div>
+<!-- ── BLOCKED TAB ── -->
+<div class="tab-panel" id="panel-blocked">
+  <div class="empty" id="blockedEmpty">
+    <div class="empty-icon">◈</div>
+    <div class="empty-text">no blocked events yet</div>
   </div>
-</div>
-<div class="tl-tooltip" id="tlTooltip"></div>
-
-<!-- ── PROCESS TREE TAB ── -->
-<div class="tab-panel" id="panel-proctree">
-  <div class="proctree-container" id="proctreeContainer">
-    <div class="empty" id="ptEmpty">
-      <div class="empty-icon">◈</div>
-      <div class="empty-text">no events yet</div>
-    </div>
-    <div id="ptContent"></div>
-  </div>
+  <div class="blocked-container" id="blockedContainer" style="display:none"></div>
 </div>
 
 <script>
   const MAX_ROWS = 500;
 
-  // ── State ──────────────────────────────────────────────────────────────────
   const state = {
-    events: [],        // raw event objects (capped at MAX_ROWS)
-    processes: new Map(), // pid → {pid, ppid, comm, events:[], collapsed: true}
-    total: 0,
-    blocked: 0,
-    allowed: 0,
+    events:      [],
+    processes:   new Map(), // pid → {pid, ppid, comm, blockedEvents:[]}
+    total:       0,
+    blocked:     0,
+    allowed:     0,
     filterAction: 'all',
-    filterType: null,
-    activeTab: 'log',
+    filterType:   null,
+    filterPid:    null,
+    activeTab:    'log',
   };
 
   // ── DOM refs ───────────────────────────────────────────────────────────────
-  const liveDot     = document.getElementById('liveDot');
-  const profileBadge  = document.getElementById('profileBadge');
-  const versionBadge  = document.getElementById('versionBadge');
-  const connDot     = document.getElementById('connDot');
-  const connLabel   = document.getElementById('connLabel');
-  const statTotal   = document.getElementById('statTotal');
-  const statBlocked = document.getElementById('statBlocked');
-  const statAllowed = document.getElementById('statAllowed');
-  const eventsTable = document.getElementById('eventsTable');
-  const eventsBody  = document.getElementById('eventsBody');
-  const emptyState  = document.getElementById('emptyState');
-  const clearBtn    = document.getElementById('clearBtn');
-  const tlTooltip   = document.getElementById('tlTooltip');
+  const liveDot        = document.getElementById('liveDot');
+  const profileBadge   = document.getElementById('profileBadge');
+  const versionBadge   = document.getElementById('versionBadge');
+  const connDot        = document.getElementById('connDot');
+  const connLabel      = document.getElementById('connLabel');
+  const statTotal      = document.getElementById('statTotal');
+  const statBlocked    = document.getElementById('statBlocked');
+  const statAllowed    = document.getElementById('statAllowed');
+  const eventsTable    = document.getElementById('eventsTable');
+  const eventsBody     = document.getElementById('eventsBody');
+  const emptyState     = document.getElementById('emptyState');
+  const clearBtn       = document.getElementById('clearBtn');
+  const blockedTabBtn  = document.getElementById('blockedTabBtn');
+  const blockedEmpty   = document.getElementById('blockedEmpty');
+  const blockedContainer = document.getElementById('blockedContainer');
+  const pidFilterLabel = document.getElementById('pidFilterLabel');
+  const clearPidFilter = document.getElementById('clearPidFilter');
 
-  // ── Relative time ──────────────────────────────────────────────────────────
+  // ── Helpers ────────────────────────────────────────────────────────────────
   function relTime(isoStr) {
     const diff = Math.floor((Date.now() - new Date(isoStr)) / 1000);
-    if (diff < 5)  return 'just now';
-    if (diff < 60) return diff + 's';
-    if (diff < 3600) return Math.floor(diff/60) + 'm';
-    return Math.floor(diff/3600) + 'h';
+    if (diff < 5)    return 'just now';
+    if (diff < 60)   return diff + 's';
+    if (diff < 3600) return Math.floor(diff / 60) + 'm';
+    return Math.floor(diff / 3600) + 'h';
   }
 
   setInterval(() => {
@@ -673,7 +563,6 @@
     });
   }, 5000);
 
-  // ── Escape HTML ────────────────────────────────────────────────────────────
   function escHtml(s) {
     return String(s)
       .replace(/&/g, '&amp;')
@@ -681,7 +570,6 @@
       .replace(/>/g, '&gt;');
   }
 
-  // ── Log tab: render one row ────────────────────────────────────────────────
   function typeBadge(evt) {
     const map = {
       file_open:   ['FILE', 'badge-file'],
@@ -695,29 +583,35 @@
 
   function detail(evt) {
     if (evt.event === 'net_connect') {
-      const ip = evt.dest_ip || '';
-      const port = evt.dest_port || '';
-      return `<span class="dest">${ip}:${port}</span>`;
+      return `<span class="dest">${escHtml(evt.dest_ip || '')}:${escHtml(String(evt.dest_port || ''))}</span>`;
     }
     if (evt.event === 'ssl_data') {
-      const dir = evt.ssl_dir || '';
+      const dir     = evt.ssl_dir || '';
       const preview = (evt.ssl_data || '').slice(0, 120);
       return `<span class="ssl-dir">[${escHtml(dir)}]</span><span class="ssl-preview">${escHtml(preview)}</span>`;
     }
     return escHtml(evt.path || '');
   }
 
+  function eventDetail(evt) {
+    if (evt.event === 'net_connect') return (evt.dest_ip || '') + ':' + (evt.dest_port || '');
+    if (evt.event === 'ssl_data')    return '[' + (evt.ssl_dir || '') + '] ' + (evt.ssl_data || '').slice(0, 100);
+    return evt.path || '';
+  }
+
+  // ── Log tab ────────────────────────────────────────────────────────────────
   function makeRow(evt) {
     const isBlock = evt.action === 'BLOCK';
     const tr = document.createElement('tr');
     tr.className = isBlock ? 'row-block' : 'row-allow';
     tr.dataset.action = evt.action;
     tr.dataset.event  = evt.event;
+    tr.dataset.pid    = evt.pid;
     tr.title = evt.reason || '';
 
     tr.innerHTML = `
-      <td class="time-cell" data-ts="${evt.ts}">${relTime(evt.ts)}</td>
-      <td class="pid-cell">${evt.pid}</td>
+      <td class="time-cell" data-ts="${escHtml(evt.ts)}">${relTime(evt.ts)}</td>
+      <td class="pid-cell">${escHtml(String(evt.pid))}</td>
       <td class="process-cell">${escHtml(evt.comm)}</td>
       <td>${typeBadge(evt)}</td>
       <td class="detail-cell">${detail(evt)}</td>
@@ -726,13 +620,29 @@
           ? `<span class="action-block">BLOCK</span>`
           : `<span class="action-allow">ALLOW</span>`}
       </td>`;
+
+    // Click: if blocked, jump to Blocked tab for this PID;
+    // otherwise filter log to this PID
+    tr.addEventListener('click', () => {
+      if (isBlock && state.processes.has(evt.pid) && state.processes.get(evt.pid).blockedEvents.length > 0) {
+        switchTab('blocked');
+        // scroll to card
+        requestAnimationFrame(() => {
+          const card = document.getElementById('bproc-' + evt.pid);
+          if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+      } else {
+        setPidFilter(evt.pid, evt.comm);
+      }
+    });
+
     return tr;
   }
 
-  // ── Log tab: filter & display ──────────────────────────────────────────────
   function rowVisible(tr) {
     if (state.filterAction !== 'all' && tr.dataset.action !== state.filterAction) return false;
     if (state.filterType && tr.dataset.event !== state.filterType) return false;
+    if (state.filterPid !== null && Number(tr.dataset.pid) !== state.filterPid) return false;
     return true;
   }
 
@@ -747,7 +657,95 @@
     eventsTable.style.display = visible === 0 ? 'none' : '';
   }
 
-  // ── Add event to state and relevant views ──────────────────────────────────
+  function setPidFilter(pid, comm) {
+    state.filterPid = pid;
+    pidFilterLabel.textContent = 'pid ' + pid + ' (' + comm + ')';
+    pidFilterLabel.style.display = 'inline';
+    clearPidFilter.style.display = 'inline';
+    applyFilters();
+    switchTab('log');
+  }
+
+  clearPidFilter.addEventListener('click', () => {
+    state.filterPid = null;
+    pidFilterLabel.style.display = 'none';
+    clearPidFilter.style.display = 'none';
+    applyFilters();
+  });
+
+  // ── Blocked tab ────────────────────────────────────────────────────────────
+  function renderBlocked() {
+    const blockedProcs = [...state.processes.values()]
+      .filter(p => p.blockedEvents.length > 0)
+      .sort((a, b) => {
+        const at = new Date(a.blockedEvents[0].ts).getTime();
+        const bt = new Date(b.blockedEvents[0].ts).getTime();
+        return bt - at; // most recent first
+      });
+
+    if (blockedProcs.length === 0) {
+      blockedEmpty.style.display    = 'flex';
+      blockedContainer.style.display = 'none';
+      return;
+    }
+
+    blockedEmpty.style.display    = 'none';
+    blockedContainer.style.display = 'flex';
+
+    // Update or create cards (avoid full re-render)
+    blockedProcs.forEach(proc => {
+      let card = document.getElementById('bproc-' + proc.pid);
+      if (!card) {
+        card = document.createElement('div');
+        card.className = 'blocked-proc';
+        card.id = 'bproc-' + proc.pid;
+        blockedContainer.prepend(card);
+      }
+
+      // Parent info
+      let ppidStr = '';
+      if (proc.ppid) {
+        const parent = state.processes.get(proc.ppid);
+        ppidStr = parent
+          ? `← <span class="blocked-proc-ppid">${proc.ppid} (${escHtml(parent.comm)})</span>`
+          : `← <span class="blocked-proc-ppid">${proc.ppid}</span>`;
+      }
+
+      card.innerHTML = `
+        <div class="blocked-proc-header" data-pid="${proc.pid}">
+          <span class="blocked-proc-pid">${proc.pid}</span>
+          <span class="blocked-proc-comm">${escHtml(proc.comm)}</span>
+          ${ppidStr}
+          <span class="blocked-proc-badge">${proc.blockedEvents.length} BLOCKED</span>
+          <span class="blocked-proc-hint">click to filter log</span>
+        </div>
+        <div class="blocked-events">
+          ${proc.blockedEvents.map(evt => `
+            <div class="blocked-event">
+              <span class="blocked-event-time" data-ts="${escHtml(evt.ts)}">${relTime(evt.ts)}</span>
+              ${typeBadge(evt)}
+              <span class="blocked-event-detail">${escHtml(eventDetail(evt))}</span>
+              <span class="blocked-event-reason">${escHtml(evt.reason || '')}</span>
+            </div>
+          `).join('')}
+        </div>`;
+
+      // Click header → filter log to this PID
+      card.querySelector('.blocked-proc-header').addEventListener('click', () => {
+        setPidFilter(proc.pid, proc.comm);
+      });
+    });
+
+    // Remove cards for PIDs that no longer exist (e.g. after clear)
+    blockedContainer.querySelectorAll('.blocked-proc').forEach(card => {
+      const pid = Number(card.id.replace('bproc-', ''));
+      if (!state.processes.has(pid) || state.processes.get(pid).blockedEvents.length === 0) {
+        card.remove();
+      }
+    });
+  }
+
+  // ── Add event ──────────────────────────────────────────────────────────────
   function addEvent(evt) {
     state.total++;
     if (evt.action === 'BLOCK') state.blocked++; else state.allowed++;
@@ -755,26 +753,34 @@
     statBlocked.textContent = state.blocked;
     statAllowed.textContent = state.allowed;
 
-    // Keep events list capped
     state.events.unshift(evt);
     if (state.events.length > MAX_ROWS) state.events.pop();
 
     // Update process map
     const pid = evt.pid;
     if (!state.processes.has(pid)) {
-      state.processes.set(pid, {
-        pid,
-        ppid: evt.ppid || 0,
-        comm: evt.comm,
-        events: [],
-        collapsed: true,
-      });
+      state.processes.set(pid, { pid, ppid: evt.ppid || 0, comm: evt.comm, blockedEvents: [] });
     }
     const proc = state.processes.get(pid);
-    proc.events.unshift(evt);
-    if (proc.events.length > 200) proc.events.pop();
+    if (evt.action === 'BLOCK') {
+      proc.blockedEvents.unshift(evt);
 
-    // Update log tab (always)
+      // Flash the Blocked tab button
+      blockedTabBtn.classList.add('has-blocks');
+
+      // If Blocked tab is active, update it and flash the card
+      if (state.activeTab === 'blocked') {
+        renderBlocked();
+        const card = document.getElementById('bproc-' + pid);
+        if (card) {
+          card.classList.remove('flash');
+          void card.offsetWidth; // reflow to restart animation
+          card.classList.add('flash');
+        }
+      }
+    }
+
+    // Log tab: insert row
     const tr = makeRow(evt);
     eventsBody.insertBefore(tr, eventsBody.firstChild);
     while (eventsBody.children.length > MAX_ROWS) {
@@ -786,27 +792,23 @@
     } else {
       tr.style.display = 'none';
     }
-
-    // Update active non-log tabs
-    if (state.activeTab === 'timeline') renderTimeline();
-    if (state.activeTab === 'proctree') renderProcTree();
   }
 
   // ── Tab switching ──────────────────────────────────────────────────────────
+  function switchTab(tab) {
+    state.activeTab = tab;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('panel-' + tab).classList.add('active');
+    if (tab === 'blocked') renderBlocked();
+  }
+
   document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const tab = btn.dataset.tab;
-      state.activeTab = tab;
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-      document.getElementById('panel-' + tab).classList.add('active');
-      if (tab === 'timeline') renderTimeline();
-      if (tab === 'proctree') renderProcTree();
-    });
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
   });
 
-  // ── Filters ────────────────────────────────────────────────────────────────
+  // ── Log filters ────────────────────────────────────────────────────────────
   document.querySelectorAll('[data-filter="action"]').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('[data-filter="action"]').forEach(b => b.classList.remove('active'));
@@ -833,242 +835,20 @@
 
   clearBtn.addEventListener('click', () => {
     eventsBody.innerHTML = '';
+    blockedContainer.innerHTML = '';
     state.events = [];
     state.processes.clear();
     state.total = state.blocked = state.allowed = 0;
     statTotal.textContent = statBlocked.textContent = statAllowed.textContent = 0;
-    emptyState.style.display  = 'flex';
-    eventsTable.style.display = 'none';
-    renderTimeline();
-    renderProcTree();
+    emptyState.style.display    = 'flex';
+    eventsTable.style.display   = 'none';
+    blockedEmpty.style.display    = 'flex';
+    blockedContainer.style.display = 'none';
+    blockedTabBtn.classList.remove('has-blocks');
+    state.filterPid = null;
+    pidFilterLabel.style.display = 'none';
+    clearPidFilter.style.display = 'none';
   });
-
-  // ── Timeline rendering ─────────────────────────────────────────────────────
-  const LANE_TYPES = ['file_open', 'exec', 'net_connect', 'ssl_data'];
-  const LANE_LABELS = { file_open: 'FILE', exec: 'EXEC', net_connect: 'NET', ssl_data: 'SSL' };
-
-  function renderTimeline() {
-    const tlEmpty   = document.getElementById('tlEmpty');
-    const tlContent = document.getElementById('tlContent');
-    const tlAxis    = document.getElementById('tlAxis');
-    const tlLanes   = document.getElementById('tlLanes');
-
-    if (state.events.length === 0) {
-      tlEmpty.style.display   = 'flex';
-      tlContent.style.display = 'none';
-      return;
-    }
-
-    tlEmpty.style.display   = 'none';
-    tlContent.style.display = 'block';
-
-    // Determine time range
-    const times = state.events.map(e => new Date(e.ts).getTime()).filter(t => !isNaN(t));
-    if (times.length === 0) return;
-    let tMin = Math.min(...times);
-    let tMax = Math.max(...times);
-    if (tMax === tMin) tMax = tMin + 1000;
-    const span = tMax - tMin;
-
-    // Axis labels
-    const axisFmt = t => {
-      const d = new Date(t);
-      return d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'});
-    };
-    tlAxis.innerHTML = '';
-    for (let i = 0; i <= 4; i++) {
-      const t = tMin + (span * i / 4);
-      const span_el = document.createElement('span');
-      span_el.textContent = axisFmt(t);
-      tlAxis.appendChild(span_el);
-    }
-
-    // Build lanes
-    // Find which types actually have events
-    const activeTypes = LANE_TYPES.filter(type =>
-      state.events.some(e => e.event === type)
-    );
-
-    tlLanes.innerHTML = '';
-
-    activeTypes.forEach(type => {
-      const evts = state.events.filter(e => e.event === type);
-
-      const lane = document.createElement('div');
-      lane.className = 'swimlane';
-
-      const label = document.createElement('div');
-      label.className = 'swimlane-label';
-      label.textContent = LANE_LABELS[type] || type;
-      lane.appendChild(label);
-
-      const track = document.createElement('div');
-      track.className = 'swimlane-track';
-
-      evts.forEach(evt => {
-        const t = new Date(evt.ts).getTime();
-        if (isNaN(t)) return;
-        const pct = ((t - tMin) / span) * 100;
-
-        const dot = document.createElement('div');
-        dot.className = 'tl-dot ' + (evt.action === 'BLOCK' ? 'block' : 'allow');
-        dot.style.left = pct + '%';
-
-        dot.addEventListener('mouseenter', e => {
-          const tt = tlTooltip;
-          let detailStr = evt.path || (evt.dest_ip ? evt.dest_ip + ':' + evt.dest_port : '') || (evt.ssl_data ? evt.ssl_data.slice(0, 60) : '');
-          tt.innerHTML = `
-            <div class="tl-tt-row"><span class="tl-tt-label">comm</span>${escHtml(evt.comm)}</div>
-            <div class="tl-tt-row"><span class="tl-tt-label">type</span>${escHtml(evt.event)}</div>
-            ${detailStr ? `<div class="tl-tt-row"><span class="tl-tt-label">detail</span>${escHtml(detailStr)}</div>` : ''}
-            <div class="tl-tt-row"><span class="tl-tt-label">action</span>${escHtml(evt.action)}</div>
-            <div class="tl-tt-row"><span class="tl-tt-label">time</span>${escHtml(evt.ts)}</div>
-          `;
-          tt.style.display = 'block';
-          tt.style.left = (e.clientX + 12) + 'px';
-          tt.style.top  = (e.clientY - 10) + 'px';
-        });
-
-        dot.addEventListener('mousemove', e => {
-          tlTooltip.style.left = (e.clientX + 12) + 'px';
-          tlTooltip.style.top  = (e.clientY - 10) + 'px';
-        });
-
-        dot.addEventListener('mouseleave', () => {
-          tlTooltip.style.display = 'none';
-        });
-
-        track.appendChild(dot);
-      });
-
-      lane.appendChild(track);
-      tlLanes.appendChild(lane);
-    });
-  }
-
-  // ── Process tree rendering ─────────────────────────────────────────────────
-  function renderProcTree() {
-    const ptEmpty   = document.getElementById('ptEmpty');
-    const ptContent = document.getElementById('ptContent');
-
-    if (state.processes.size === 0) {
-      ptEmpty.style.display   = 'flex';
-      ptContent.style.display = 'none';
-      return;
-    }
-
-    ptEmpty.style.display   = 'none';
-    ptContent.style.display = 'block';
-
-    // Build pid→children map
-    const children = new Map(); // pid → [pid, ...]
-    const allPids = new Set(state.processes.keys());
-
-    state.processes.forEach((proc, pid) => {
-      const ppid = proc.ppid;
-      if (ppid && allPids.has(ppid)) {
-        if (!children.has(ppid)) children.set(ppid, []);
-        children.get(ppid).push(pid);
-      }
-    });
-
-    // Root nodes: PIDs whose PPID is not tracked
-    const roots = [];
-    state.processes.forEach((proc, pid) => {
-      const ppid = proc.ppid;
-      if (!ppid || !allPids.has(ppid)) {
-        roots.push(pid);
-      }
-    });
-
-    roots.sort((a, b) => a - b);
-
-    ptContent.innerHTML = '';
-
-    function renderNode(pid, depth) {
-      const proc = state.processes.get(pid);
-      if (!proc) return null;
-
-      const totalEvts = proc.events.length;
-      const blockEvts = proc.events.filter(e => e.action === 'BLOCK').length;
-      const kids = (children.get(pid) || []).slice().sort((a,b) => a-b);
-      const hasChildren = kids.length > 0;
-      const isCollapsed = proc.collapsed;
-
-      const node = document.createElement('div');
-      node.className = 'proc-node';
-
-      const header = document.createElement('div');
-      header.className = 'proc-header';
-      header.innerHTML = `
-        <span class="proc-toggle">${hasChildren || totalEvts > 0 ? (isCollapsed ? '▶' : '▼') : ' '}</span>
-        <span class="proc-pid">${pid}</span>
-        <span class="proc-comm">${escHtml(proc.comm)}</span>
-        <span class="proc-counts">
-          <span class="proc-count-total">${totalEvts} evt${totalEvts !== 1 ? 's' : ''}</span>
-          ${blockEvts > 0 ? `<span class="proc-count-block">${blockEvts} blocked</span>` : ''}
-        </span>
-      `;
-
-      header.addEventListener('click', () => {
-        proc.collapsed = !proc.collapsed;
-        renderProcTree(); // full re-render
-      });
-
-      node.appendChild(header);
-
-      if (!isCollapsed) {
-        // Show events for this process
-        if (proc.events.length > 0) {
-          const evtList = document.createElement('div');
-          evtList.className = 'proc-events';
-          proc.events.slice(0, 20).forEach(evt => {
-            const row = document.createElement('div');
-            row.className = 'proc-event-row';
-            let detailStr = evt.path || '';
-            if (evt.event === 'net_connect') {
-              detailStr = (evt.dest_ip || '') + ':' + (evt.dest_port || '');
-            } else if (evt.event === 'ssl_data') {
-              detailStr = '[' + (evt.ssl_dir || '') + '] ' + (evt.ssl_data || '').slice(0, 80);
-            }
-            const actionCls = evt.action === 'BLOCK' ? 'proc-event-action-block' : 'proc-event-action-allow';
-            row.innerHTML = `
-              <span class="proc-event-type ${escHtml(evt.event)}">${escHtml(evt.event)}</span>
-              <span class="proc-event-detail">${escHtml(detailStr)}</span>
-              <span class="${actionCls}">${escHtml(evt.action)}</span>
-            `;
-            evtList.appendChild(row);
-          });
-          if (proc.events.length > 20) {
-            const more = document.createElement('div');
-            more.className = 'proc-event-row';
-            more.style.color = 'var(--muted)';
-            more.textContent = `… ${proc.events.length - 20} more`;
-            evtList.appendChild(more);
-          }
-          node.appendChild(evtList);
-        }
-
-        // Show children
-        if (hasChildren) {
-          const childContainer = document.createElement('div');
-          childContainer.className = 'proc-children';
-          kids.forEach(childPid => {
-            const childNode = renderNode(childPid, depth + 1);
-            if (childNode) childContainer.appendChild(childNode);
-          });
-          node.appendChild(childContainer);
-        }
-      }
-
-      return node;
-    }
-
-    roots.forEach(pid => {
-      const node = renderNode(pid, 0);
-      if (node) ptContent.appendChild(node);
-    });
-  }
 
   // ── SSE connection ─────────────────────────────────────────────────────────
   function connect() {
@@ -1092,7 +872,6 @@
     };
   }
 
-  // ── Load status ────────────────────────────────────────────────────────────
   async function loadStatus() {
     try {
       const base = new URL('.', window.location.href).href;
