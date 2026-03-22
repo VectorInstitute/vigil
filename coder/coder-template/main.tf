@@ -81,13 +81,13 @@ resource "coder_agent" "main" {
     echo "vigil started — UI on port 7394"
 
     # Configure shell to always start in repo
-    if ! grep -q "auto-cd vigil" "/home/${local.username}/.bashrc" 2>/dev/null; then
-      cat >> "/home/${local.username}/.bashrc" <<'BASHRC'
+    if ! grep -q "auto-cd vigil" "/home/${local.username}/.zshrc" 2>/dev/null; then
+      cat >> "/home/${local.username}/.zshrc" <<'ZSHRC'
 
 # auto-cd vigil (interactive only — keeps coder stat output clean)
 [[ $- == *i* ]] && cd ~/vigil 2>/dev/null || true
 [[ $- == *i* ]] && echo "" && echo "  vigil demo workspace — run: sudo ./demo/run_demo.sh" && echo ""
-BASHRC
+ZSHRC
     fi
 
     echo "Startup complete"
