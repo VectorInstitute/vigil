@@ -86,7 +86,7 @@ func Load(p *profiles.Profile, objPath, sslBinaryPath string) (*Loader, error) {
 	}
 
 	var objs objects
-	if err := spec.LoadAndAssign(&objs, nil); err != nil {
+	if err = spec.LoadAndAssign(&objs, nil); err != nil {
 		return nil, fmt.Errorf("loading BPF objects: %w", err)
 	}
 
@@ -99,17 +99,17 @@ func Load(p *profiles.Profile, objPath, sslBinaryPath string) (*Loader, error) {
 		doneCh:       make(chan struct{}),
 	}
 
-	if err := l.populateMaps(p); err != nil {
+	if err = l.populateMaps(p); err != nil {
 		_ = l.Close()
 		return nil, fmt.Errorf("populating BPF maps: %w", err)
 	}
 	// Seed watched_pids BEFORE attaching BPF programs so that when the LSM hooks
 	// go live they already have all pre-existing agent processes in the map.
-	if err := l.seedWatchedPids(); err != nil {
+	if err = l.seedWatchedPids(); err != nil {
 		// Non-fatal: BPF hooks will catch new sessions; log and continue.
 		fmt.Fprintf(os.Stderr, "vigil: warning: seeding watched_pids: %v\n", err)
 	}
-	if err := l.attach(); err != nil {
+	if err = l.attach(); err != nil {
 		_ = l.Close()
 		return nil, fmt.Errorf("attaching BPF programs: %w", err)
 	}

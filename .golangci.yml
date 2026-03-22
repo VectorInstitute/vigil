@@ -23,6 +23,10 @@ linters:
       # functions intentionally skip error handling (ErrNotLinux is always returned).
       - path: loader_stub\.go
         linters: [errcheck, unused]
+      # fmt.Fprintf/Fprintln writes to stdout/stderr/ResponseWriter never need
+      # error checking — failures are unactionable in a CLI or HTTP handler.
+      - linters: [errcheck]
+        text: "^Error return value of `fmt\\.F"
 
 formatters:
   enable:

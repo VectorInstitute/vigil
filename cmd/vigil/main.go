@@ -65,7 +65,7 @@ func runWatch(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("loading eBPF: %w\nEnsure: Linux kernel 5.7+, CONFIG_BPF_LSM=y, lsm=bpf, run as root", err)
 	}
-	defer l.Close()
+	defer func() { _ = l.Close() }()
 
 	det := detector.New(p)
 	log := audit.New(cmd.OutOrStdout())

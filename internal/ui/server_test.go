@@ -61,7 +61,7 @@ func connectSSE(t *testing.T, url string) (*bufio.Scanner, context.CancelFunc) {
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
-	t.Cleanup(func() { resp.Body.Close() })
+	t.Cleanup(func() { _ = resp.Body.Close() })
 
 	assert.Equal(t, "text/event-stream", resp.Header.Get("Content-Type"))
 	return bufio.NewScanner(resp.Body), cancel
@@ -81,7 +81,7 @@ func TestHandler_servesIndexHTML(t *testing.T) {
 
 	resp, err := http.Get(ts.URL + "/")
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Contains(t, resp.Header.Get("Content-Type"), "text/html")
@@ -94,7 +94,7 @@ func TestHandler_statusEndpoint(t *testing.T) {
 
 	resp, err := http.Get(ts.URL + "/api/status")
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -118,7 +118,7 @@ func TestHandler_eventsSSEHeaders(t *testing.T) {
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Equal(t, "text/event-stream", resp.Header.Get("Content-Type"))

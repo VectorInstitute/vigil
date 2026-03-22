@@ -18,11 +18,9 @@ func TestEventType_String(t *testing.T) {
 
 func TestEvent_FileOpen(t *testing.T) {
 	e := events.Event{
-		Timestamp: time.Now(),
-		PID:       1234,
-		Comm:      "ollama",
-		Type:      events.FileOpen,
-		Path:      "/etc/passwd",
+		PID:  1234,
+		Type: events.FileOpen,
+		Path: "/etc/passwd",
 	}
 	assert.Equal(t, events.FileOpen, e.Type)
 	assert.Equal(t, "/etc/passwd", e.Path)
@@ -33,12 +31,9 @@ func TestEvent_FileOpen(t *testing.T) {
 
 func TestEvent_NetConnect(t *testing.T) {
 	e := events.Event{
-		Timestamp: time.Now(),
-		PID:       5678,
-		Comm:      "ollama",
-		Type:      events.NetConnect,
-		DestIP:    net.ParseIP("8.8.8.8"),
-		DestPort:  443,
+		Type:     events.NetConnect,
+		DestIP:   net.ParseIP("8.8.8.8"),
+		DestPort: 443,
 	}
 	assert.Equal(t, events.NetConnect, e.Type)
 	assert.Equal(t, uint16(443), e.DestPort)
@@ -48,12 +43,9 @@ func TestEvent_NetConnect(t *testing.T) {
 
 func TestEvent_Exec(t *testing.T) {
 	e := events.Event{
-		Timestamp: time.Now(),
-		PID:       9999,
-		Comm:      "ollama",
-		Type:      events.Exec,
-		Path:      "/bin/bash",
-		Argv:      []string{"/bin/bash", "-i"},
+		Type: events.Exec,
+		Path: "/bin/bash",
+		Argv: []string{"/bin/bash", "-i"},
 	}
 	assert.Equal(t, events.Exec, e.Type)
 	assert.Equal(t, "/bin/bash", e.Path)
@@ -83,7 +75,6 @@ func TestEvent_SSLData(t *testing.T) {
 	assert.Contains(t, s, "claude-code")
 
 	eRecv := events.Event{
-		Type:      events.SSLData,
 		Direction: events.SSLRecv,
 	}
 	assert.Equal(t, "recv", eRecv.Direction.String())
