@@ -6,7 +6,11 @@ description: Behavioral profile for Claude Code AI coding agent
 # legitimate coding tasks. Vigil enforces a hard deny list for sensitive resources.
 default_policy: allow
 
-# Only surface events from the Claude Code process (runs on Bun; comm is "bun" or "node")
+# entry_comm is the agent's root process. vigil uses BPF process lineage
+# tracking to follow claude and all its descendants (node, bun, sh, git, ...).
+entry_comm: claude
+
+# watched_comms is kept as a fallback for kernels without lineage support.
 watched_comms:
   - bun
   - node

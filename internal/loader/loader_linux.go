@@ -24,12 +24,24 @@ import (
 // Without tags, cilium/ebpf uses the field name as-is (not snake_case),
 // so "LsmFileOpen" would look for "LsmFileOpen" not "vigil_file_open".
 type objects struct {
-	Events           *ebpf.Map     `ebpf:"events"`
-	BlockedPaths     *ebpf.Map     `ebpf:"blocked_paths"`
-	BlockedIPv4      *ebpf.Map     `ebpf:"blocked_ipv4"`
-	TraceOpenat      *ebpf.Program `ebpf:"trace_openat"`
-	TraceExecve      *ebpf.Program `ebpf:"trace_execve"`
-	TraceConnect     *ebpf.Program `ebpf:"trace_connect"`
+	// Maps
+	Events      *ebpf.Map `ebpf:"events"`
+	BlockedPaths *ebpf.Map `ebpf:"blocked_paths"`
+	BlockedIPv4 *ebpf.Map `ebpf:"blocked_ipv4"`
+	EntryComm   *ebpf.Map `ebpf:"entry_comm"`   // agent root process comm
+	WatchedPids *ebpf.Map `ebpf:"watched_pids"` // agent process tree PIDs
+
+	// Observation tracepoints
+	TraceOpenat  *ebpf.Program `ebpf:"trace_openat"`
+	TraceExecve  *ebpf.Program `ebpf:"trace_execve"`
+	TraceConnect *ebpf.Program `ebpf:"trace_connect"`
+
+	// Lineage tracepoints
+	TraceExecLineage *ebpf.Program `ebpf:"trace_exec_lineage"`
+	TraceForkLineage *ebpf.Program `ebpf:"trace_fork_lineage"`
+	TraceExitLineage *ebpf.Program `ebpf:"trace_exit_lineage"`
+
+	// LSM enforcement hooks
 	LsmFileOpen      *ebpf.Program `ebpf:"vigil_file_open"`
 	LsmSocketConnect *ebpf.Program `ebpf:"vigil_socket_connect"`
 	LsmBprmCheck     *ebpf.Program `ebpf:"vigil_bprm_check"`
@@ -41,6 +53,7 @@ type Loader struct {
 	links        []link.Link
 	reader       *ringbuf.Reader
 	bootWallTime time.Time // wall-clock time at system boot, for timestamp conversion
+	entryComm    string    // agent root process comm, empty if lineage tracking disabled
 }
 
 // Load removes the memlock limit, loads eBPF objects from the embedded .o file,
@@ -60,7 +73,7 @@ func Load(p *profiles.Profile, objPath string) (*Loader, error) {
 		return nil, fmt.Errorf("loading BPF objects: %w", err)
 	}
 
-	l := &Loader{objs: objs, bootWallTime: bootWallTime()}
+	l := &Loader{objs: objs, bootWallTime: bootWallTime(), entryComm: p.EntryComm}
 	if err := l.populateMaps(p); err != nil {
 		_ = l.Close()
 		return nil, fmt.Errorf("populating BPF maps: %w", err)
@@ -92,6 +105,18 @@ func (l *Loader) populateMaps(p *profiles.Profile) error {
 		}
 	}
 
+	// entry_comm: write the agent's root process comm into the BPF array map
+	// so that trace_exec_lineage can identify when the agent starts.
+	// The kernel comm is at most 15 printable chars + null terminator.
+	if p.EntryComm != "" {
+		var val [16]byte
+		copy(val[:], p.EntryComm)
+		idx := uint32(0)
+		if err := l.objs.EntryComm.Put(&idx, &val); err != nil {
+			return fmt.Errorf("entry_comm.Put(%q): %w", p.EntryComm, err)
+		}
+	}
+
 	// Networks NOT in allowed_networks → blocked_ipv4.
 	// For the MVP we invert: any IP not in allowed list is blocked by the
 	// userspace detector. The BPF map holds explicit block entries for known
@@ -105,9 +130,10 @@ func (l *Loader) populateMaps(p *profiles.Profile) error {
 // attach wires tracepoints and LSM hooks.
 func (l *Loader) attach() error {
 	hooks := []struct {
-		prog    *ebpf.Program
-		linker  func(*ebpf.Program) (link.Link, error)
+		prog   *ebpf.Program
+		linker func(*ebpf.Program) (link.Link, error)
 	}{
+		// Observation tracepoints
 		{l.objs.TraceOpenat, func(p *ebpf.Program) (link.Link, error) {
 			return link.Tracepoint("syscalls", "sys_enter_openat", p, nil)
 		}},
@@ -117,6 +143,17 @@ func (l *Loader) attach() error {
 		{l.objs.TraceConnect, func(p *ebpf.Program) (link.Link, error) {
 			return link.Tracepoint("syscalls", "sys_enter_connect", p, nil)
 		}},
+		// Process lineage tracepoints (always attached; entry_comm controls activity)
+		{l.objs.TraceExecLineage, func(p *ebpf.Program) (link.Link, error) {
+			return link.Tracepoint("sched", "sched_process_exec", p, nil)
+		}},
+		{l.objs.TraceForkLineage, func(p *ebpf.Program) (link.Link, error) {
+			return link.Tracepoint("sched", "sched_process_fork", p, nil)
+		}},
+		{l.objs.TraceExitLineage, func(p *ebpf.Program) (link.Link, error) {
+			return link.Tracepoint("sched", "sched_process_exit", p, nil)
+		}},
+		// LSM enforcement hooks (synchronous, system-wide)
 		{l.objs.LsmFileOpen, func(p *ebpf.Program) (link.Link, error) {
 			return link.AttachLSM(link.LSMOptions{Program: p})
 		}},
@@ -166,9 +203,14 @@ func (l *Loader) Close() error {
 	closeObj(l.objs.Events)
 	closeObj(l.objs.BlockedPaths)
 	closeObj(l.objs.BlockedIPv4)
+	closeObj(l.objs.EntryComm)
+	closeObj(l.objs.WatchedPids)
 	closeObj(l.objs.TraceOpenat)
 	closeObj(l.objs.TraceExecve)
 	closeObj(l.objs.TraceConnect)
+	closeObj(l.objs.TraceExecLineage)
+	closeObj(l.objs.TraceForkLineage)
+	closeObj(l.objs.TraceExitLineage)
 	closeObj(l.objs.LsmFileOpen)
 	closeObj(l.objs.LsmSocketConnect)
 	closeObj(l.objs.LsmBprmCheck)

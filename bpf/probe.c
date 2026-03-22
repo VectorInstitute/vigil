@@ -36,21 +36,39 @@ struct {
     __type(value, __u8);
 } denied_ipv4 SEC(".maps");
 
+// ── Process lineage maps ──────────────────────────────────────────────────────
+
+// entry_comm[0] holds the agent's root process comm string (e.g. "gemini").
+// Written by the Go daemon from profile.entry_comm at startup.
+// If entry[0] == '\0', lineage filtering is disabled (watch all PIDs).
+struct {
+    __uint(type, BPF_MAP_TYPE_ARRAY);
+    __uint(max_entries, 1);
+    __type(key,   __u32);
+    __type(value, char[MAX_COMM_LEN]);
+} entry_comm SEC(".maps");
+
+// watched_pids tracks PIDs that belong to the agent's process tree.
+// Populated by trace_exec_lineage (entry process) and trace_fork_lineage
+// (descendant processes). Cleaned up by trace_exit_lineage.
+struct {
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __uint(max_entries, 4096);
+    __type(key,   __u32); // PID
+    __type(value, __u8);  // always 1
+} watched_pids SEC(".maps");
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-static __always_inline int path_has_prefix(const char *path, const char *prefix, int prefix_len) {
-    for (int i = 0; i < prefix_len && i < MAX_PATH_LEN - 1; i++) {
-        if (prefix[i] == '\0') return 1; // reached end of prefix — matched
-        if (path[i] != prefix[i]) return 0;
-    }
-    return 1;
-}
-
-static __always_inline __u8 check_path_denied(const char path[MAX_PATH_LEN]) {
-    // Iterate over denied_path_prefixes map entries.
-    // BPF hash iteration isn't available, so the Go side populates a small
-    // parallel array map indexed 0..N for linear scan.
-    return 0; // stub — real check done via LSM hook in lsm.c
+// pid_is_watched returns 1 if the PID should generate events.
+// When entry_comm is unconfigured (first byte '\0'), all PIDs are watched.
+// When entry_comm is set, only PIDs in the watched_pids map pass.
+static __always_inline int pid_is_watched(__u32 pid) {
+    __u32 z = 0;
+    char *entry = bpf_map_lookup_elem(&entry_comm, &z);
+    if (!entry || entry[0] == '\0')
+        return 1; // no lineage filtering — watch all
+    return bpf_map_lookup_elem(&watched_pids, &pid) != NULL;
 }
 
 static __always_inline void emit_event(struct event *e) {
@@ -62,17 +80,74 @@ static __always_inline void emit_event(struct event *e) {
     bpf_ringbuf_submit(ring_e, 0);
 }
 
-// ── Tracepoints ───────────────────────────────────────────────────────────────
+// ── Process lineage tracepoints ───────────────────────────────────────────────
+
+// trace_exec_lineage: fires after a successful exec.
+// If the new comm matches entry_comm, add this PID to watched_pids.
+SEC("tracepoint/sched/sched_process_exec")
+int trace_exec_lineage(void *ctx) {
+    __u32 z = 0;
+    char *entry = bpf_map_lookup_elem(&entry_comm, &z);
+    if (!entry || entry[0] == '\0')
+        return 0; // lineage filtering disabled
+
+    char comm[MAX_COMM_LEN];
+    bpf_get_current_comm(comm, sizeof(comm));
+
+    // Compare comm with entry_comm byte by byte.
+    for (int i = 0; i < MAX_COMM_LEN; i++) {
+        if (entry[i] != comm[i])
+            return 0; // mismatch
+        if (entry[i] == '\0')
+            break; // matched up to null terminator
+    }
+
+    // This process is the entry point — add to watched_pids.
+    __u32 pid = bpf_get_current_pid_tgid() >> 32;
+    __u8 one = 1;
+    bpf_map_update_elem(&watched_pids, &pid, &one, BPF_ANY);
+    return 0;
+}
+
+// trace_fork_lineage: fires when a process forks.
+// If the parent is in watched_pids, add the child too (inherit membership).
+SEC("tracepoint/sched/sched_process_fork")
+int trace_fork_lineage(struct trace_event_raw_sched_process_fork *ctx) {
+    __u32 parent_pid = ctx->parent_pid;
+    __u8 *watched = bpf_map_lookup_elem(&watched_pids, &parent_pid);
+    if (!watched)
+        return 0; // parent not watched — child inherits nothing
+
+    __u32 child_pid = ctx->child_pid;
+    __u8 one = 1;
+    bpf_map_update_elem(&watched_pids, &child_pid, &one, BPF_ANY);
+    return 0;
+}
+
+// trace_exit_lineage: fires when a process exits.
+// Remove the PID from watched_pids to prevent PID reuse false positives.
+SEC("tracepoint/sched/sched_process_exit")
+int trace_exit_lineage(void *ctx) {
+    __u32 pid = bpf_get_current_pid_tgid() >> 32;
+    bpf_map_delete_elem(&watched_pids, &pid);
+    return 0;
+}
+
+// ── Observation tracepoints ───────────────────────────────────────────────────
 
 // Trace openat(2) — file open
 SEC("tracepoint/syscalls/sys_enter_openat")
 int trace_openat(struct trace_event_raw_sys_enter *ctx) {
+    __u64 id  = bpf_get_current_pid_tgid();
+    __u32 pid = id >> 32;
+    if (!pid_is_watched(pid))
+        return 0;
+
     struct event e = {};
     e.event_type = EVENT_FILE_OPEN;
     e.action     = ACTION_ALLOW; // LSM hook will override to BLOCK if needed
-
-    e.pid  = bpf_get_current_pid_tgid() >> 32;
-    e.tgid = (__u32)bpf_get_current_pid_tgid();
+    e.pid        = pid;
+    e.tgid       = (__u32)id;
     bpf_get_current_comm(&e.comm, sizeof(e.comm));
 
     // ctx->args[1] is the filename pointer for openat
@@ -85,12 +160,16 @@ int trace_openat(struct trace_event_raw_sys_enter *ctx) {
 // Trace execve(2) — process spawn
 SEC("tracepoint/syscalls/sys_enter_execve")
 int trace_execve(struct trace_event_raw_sys_enter *ctx) {
+    __u64 id  = bpf_get_current_pid_tgid();
+    __u32 pid = id >> 32;
+    if (!pid_is_watched(pid))
+        return 0;
+
     struct event e = {};
     e.event_type = EVENT_EXEC;
     e.action     = ACTION_ALLOW;
-
-    e.pid  = bpf_get_current_pid_tgid() >> 32;
-    e.tgid = (__u32)bpf_get_current_pid_tgid();
+    e.pid        = pid;
+    e.tgid       = (__u32)id;
     bpf_get_current_comm(&e.comm, sizeof(e.comm));
     bpf_probe_read_user_str(e.path, sizeof(e.path), (const void *)ctx->args[0]);
 
@@ -101,15 +180,19 @@ int trace_execve(struct trace_event_raw_sys_enter *ctx) {
 // Trace connect(2) — outbound network connection
 SEC("tracepoint/syscalls/sys_enter_connect")
 int trace_connect(struct trace_event_raw_sys_enter *ctx) {
+    __u64 id  = bpf_get_current_pid_tgid();
+    __u32 pid = id >> 32;
+    if (!pid_is_watched(pid))
+        return 0;
+
     struct event e = {};
     e.event_type = EVENT_NET_CONNECT;
     e.action     = ACTION_ALLOW;
-
-    e.pid  = bpf_get_current_pid_tgid() >> 32;
-    e.tgid = (__u32)bpf_get_current_pid_tgid();
+    e.pid        = pid;
+    e.tgid       = (__u32)id;
     bpf_get_current_comm(&e.comm, sizeof(e.comm));
 
-    // ctx->args[1] is struct sockaddr * (user pointer, no __user annotation needed for BPF)
+    // ctx->args[1] is struct sockaddr * (user pointer)
     struct sockaddr sa = {};
     bpf_probe_read_user(&sa, sizeof(sa), (const void *)ctx->args[1]);
 

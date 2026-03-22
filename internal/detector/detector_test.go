@@ -176,6 +176,30 @@ denied_paths:
 	assert.Equal(t, detector.Block, dec.Action)
 }
 
+func TestEvaluate_EntryComm_DoesNotSkipAnyComm(t *testing.T) {
+	// When entry_comm is set, BPF has already filtered by PID lineage.
+	// The Go detector must not re-filter by comm name — every event from
+	// the ring buffer belongs to a watched process tree.
+	p, err := profiles.LoadBytes([]byte(`
+name: test
+entry_comm: gemini
+watched_comms: [gemini, node]
+default_policy: deny
+denied_paths:
+  - /etc/shadow
+`))
+	require.NoError(t, err)
+	d := detector.New(p)
+
+	// "sh" is not in watched_comms, but since entry_comm is set, it must NOT be Skipped.
+	// (BPF already ensured this event came from the gemini process tree.)
+	e := evt(events.FileOpen)
+	e.Comm = "sh"
+	e.Path = "/etc/shadow"
+	dec := d.Evaluate(e)
+	assert.Equal(t, detector.Block, dec.Action, "entry_comm active: child process must not be skipped")
+}
+
 func TestEvaluate_EmptyWatchedComms_WatchesAll(t *testing.T) {
 	p, err := profiles.LoadBytes([]byte(`
 name: test

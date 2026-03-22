@@ -186,6 +186,31 @@ watched_comms: [node, bun]
 	}
 }
 
+// ── entry_comm ───────────────────────────────────────────────────────────────
+
+func TestWatchComm_EntryComm_WatchesAll(t *testing.T) {
+	p, err := profiles.LoadBytes([]byte(`
+name: test
+entry_comm: gemini
+watched_comms: [node, bun]
+`))
+	require.NoError(t, err)
+	// When entry_comm is set, BPF handles lineage filtering.
+	// WatchComm must return true for any comm so Go doesn't double-filter.
+	for _, comm := range []string{"node", "bun", "systemd", "sshd", "sh", "python3"} {
+		assert.True(t, p.WatchComm(comm), "entry_comm active: should watch %s", comm)
+	}
+}
+
+func TestLoad_EntryComm(t *testing.T) {
+	p, err := profiles.LoadBytes([]byte(`
+name: gemini-cli
+entry_comm: gemini
+`))
+	require.NoError(t, err)
+	assert.Equal(t, "gemini", p.EntryComm)
+}
+
 // ── Command matching ─────────────────────────────────────────────────────────
 
 func TestMatchCommand_AllowedRunners(t *testing.T) {

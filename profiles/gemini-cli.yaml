@@ -4,7 +4,13 @@ description: Behavioral profile for Gemini CLI AI coding agent
 
 default_policy: allow
 
-# Only surface events from the Gemini CLI process (runs on Node.js)
+# entry_comm is the agent's root process. vigil uses BPF process lineage
+# tracking to follow gemini and all its descendants (node, sh, git, ...).
+# This eliminates false positives from unrelated processes (e.g. VS Code's
+# node) that share the same comm name.
+entry_comm: gemini
+
+# watched_comms is kept as a fallback for kernels without lineage support.
 watched_comms:
   - gemini
   - node

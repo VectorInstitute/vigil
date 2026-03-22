@@ -37,8 +37,16 @@ type Profile struct {
 	// DefaultPolicy is applied when no rule matches ("allow" or "deny").
 	DefaultPolicy string `yaml:"default_policy"`
 
+	// EntryComm is the kernel comm of the agent's root process (e.g. "gemini",
+	// "claude"). When set, vigil uses BPF process lineage tracking: only the
+	// entry process and all its descendants emit events. This eliminates false
+	// positives from unrelated processes sharing the same comm (e.g. VS Code's
+	// "node" vs gemini-cli's "node"). Requires kernel 5.7+.
+	EntryComm string `yaml:"entry_comm"`
+
 	// WatchedComms restricts event collection to the listed process names
-	// (kernel comm, max 15 chars). If empty, all processes are watched.
+	// (kernel comm, max 15 chars). Used when entry_comm is not set.
+	// If both are empty, all processes are watched.
 	WatchedComms []string `yaml:"watched_comms"`
 
 	DeniedPaths     []string `yaml:"denied_paths"`
@@ -64,8 +72,18 @@ func (p *Profile) compile() error {
 }
 
 // WatchComm reports whether events from a process named comm should be
-// processed. If WatchedComms is empty, all processes are watched.
+// processed by the Go detector.
+//
+// When EntryComm is set, BPF lineage tracking has already filtered the ring
+// buffer to only contain events from the agent's process tree. The Go layer
+// must not re-filter by comm name, so WatchComm always returns true.
+//
+// When EntryComm is empty, WatchedComms applies: if the list is non-empty,
+// only listed names pass; an empty list watches all processes.
 func (p *Profile) WatchComm(comm string) bool {
+	if p.EntryComm != "" {
+		return true // BPF lineage tracking active; trust the ring buffer
+	}
 	if len(p.WatchedComms) == 0 {
 		return true
 	}

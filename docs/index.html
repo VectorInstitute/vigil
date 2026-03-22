@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>vigil — eBPF runtime security for AI agents</title>
+  <style>
+    :root {
+      --bg:      #0d1117;
+      --surface: #161b22;
+      --border:  #30363d;
+      --text:    #e6edf3;
+      --muted:   #8b949e;
+      --accent:  #58a6ff;
+      --green:   #3fb950;
+      --red:     #f85149;
+      --yellow:  #d29922;
+      --purple:  #bc8cff;
+      --mono:    "JetBrains Mono", "Fira Code", monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 15px;
+      line-height: 1.7;
+    }
+
+    /* ── Nav ── */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(13,17,23,.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 2rem;
+      padding: .75rem 2rem;
+    }
+    nav .logo {
+      font-family: var(--mono);
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--accent);
+      text-decoration: none;
+      letter-spacing: -.02em;
+    }
+    nav a { color: var(--muted); text-decoration: none; font-size: .9rem; transition: color .15s; }
+    nav a:hover { color: var(--text); }
+    nav .spacer { flex: 1; }
+    nav .gh {
+      display: flex; align-items: center; gap: .4rem;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 6px; padding: .35rem .75rem;
+      font-size: .85rem; color: var(--text);
+    }
+    nav .gh:hover { border-color: var(--accent); }
+
+    /* ── Hero ── */
+    .hero {
+      max-width: 820px; margin: 0 auto;
+      padding: 6rem 2rem 4rem;
+      text-align: center;
+    }
+    .hero h1 {
+      font-size: clamp(2.4rem, 5vw, 3.6rem);
+      font-weight: 800;
+      letter-spacing: -.04em;
+      line-height: 1.1;
+      margin-bottom: 1.25rem;
+    }
+    .hero h1 span { color: var(--accent); }
+    .hero p {
+      font-size: 1.15rem;
+      color: var(--muted);
+      max-width: 560px;
+      margin: 0 auto 2rem;
+    }
+    .badges { display: flex; gap: .75rem; justify-content: center; flex-wrap: wrap; margin-bottom: 2.5rem; }
+    .badge {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 20px; padding: .3rem .85rem;
+      font-family: var(--mono); font-size: .78rem; color: var(--muted);
+    }
+    .badge.accent { border-color: var(--accent); color: var(--accent); }
+    .cta { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+    .btn {
+      padding: .6rem 1.4rem; border-radius: 8px;
+      font-size: .95rem; font-weight: 600; text-decoration: none;
+      transition: all .15s;
+    }
+    .btn-primary { background: var(--accent); color: #000; }
+    .btn-primary:hover { background: #79c0ff; }
+    .btn-secondary {
+      background: var(--surface); color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { border-color: var(--accent); }
+
+    /* ── Sections ── */
+    section { max-width: 820px; margin: 0 auto; padding: 4rem 2rem; }
+    section + section { border-top: 1px solid var(--border); }
+    h2 {
+      font-size: 1.6rem; font-weight: 700;
+      letter-spacing: -.03em; margin-bottom: 1.5rem;
+    }
+    h3 {
+      font-size: 1.05rem; font-weight: 600;
+      color: var(--accent); margin-bottom: .5rem;
+    }
+    p { color: var(--muted); margin-bottom: 1rem; }
+    p strong { color: var(--text); }
+
+    /* ── Architecture diagram ── */
+    .arch {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 1.75rem 2rem;
+      font-family: var(--mono); font-size: .82rem;
+      color: var(--text); line-height: 1.8;
+      white-space: pre; overflow-x: auto;
+    }
+    .arch .dim { color: var(--muted); }
+    .arch .hi  { color: var(--accent); }
+    .arch .grn { color: var(--green); }
+    .arch .red { color: var(--red); }
+
+    /* ── Feature grid ── */
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.25rem; }
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 1.5rem;
+      transition: border-color .15s;
+    }
+    .card:hover { border-color: var(--accent); }
+    .card-icon { font-size: 1.6rem; margin-bottom: .75rem; }
+    .card h3 { color: var(--text); font-size: .95rem; margin-bottom: .4rem; }
+    .card p { font-size: .875rem; margin: 0; }
+
+    /* ── Code blocks ── */
+    pre {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 1.25rem 1.5rem;
+      font-family: var(--mono); font-size: .82rem;
+      overflow-x: auto; line-height: 1.7; margin: 1rem 0;
+    }
+    code { font-family: var(--mono); font-size: .85em; color: var(--accent); }
+    pre code { color: var(--text); font-size: inherit; }
+    .comment { color: var(--muted); }
+    .kw     { color: var(--purple); }
+    .str    { color: var(--green); }
+    .num    { color: var(--yellow); }
+
+    /* ── Step list ── */
+    .steps { counter-reset: step; display: flex; flex-direction: column; gap: 1.25rem; }
+    .step {
+      display: flex; gap: 1.25rem;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 1.25rem 1.5rem;
+    }
+    .step::before {
+      counter-increment: step;
+      content: counter(step);
+      flex-shrink: 0;
+      width: 2rem; height: 2rem;
+      background: var(--accent); color: #000;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: .85rem;
+    }
+    .step-body h3 { color: var(--text); }
+
+    /* ── Table ── */
+    table {
+      width: 100%; border-collapse: collapse;
+      font-size: .9rem;
+    }
+    th {
+      text-align: left; padding: .6rem 1rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--muted); font-weight: 500;
+    }
+    td { padding: .6rem 1rem; border-bottom: 1px solid var(--border); }
+    tr:last-child td { border-bottom: none; }
+    .pill {
+      display: inline-block; padding: .15rem .6rem;
+      border-radius: 12px; font-size: .75rem; font-weight: 600;
+      font-family: var(--mono);
+    }
+    .pill-green { background: #1a3327; color: var(--green); }
+    .pill-muted { background: var(--surface); color: var(--muted); border: 1px solid var(--border); }
+
+    /* ── Footer ── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 2.5rem 2rem;
+      text-align: center;
+      color: var(--muted); font-size: .85rem;
+    }
+    footer a { color: var(--accent); text-decoration: none; }
+  </style>
+</head>
+<body>
+
+<!-- ── Nav ── -->
+<nav>
+  <a class="logo" href="#">vigil</a>
+  <a href="#how-it-works">How it works</a>
+  <a href="#install">Install</a>
+  <a href="#profiles">Profiles</a>
+  <a href="#lineage">Lineage</a>
+  <div class="spacer"></div>
+  <a class="gh" href="https://github.com/VectorInstitute/vigil">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+    GitHub
+  </a>
+</nav>
+
+<!-- ── Hero ── -->
+<div class="hero">
+  <h1>Runtime security for<br/><span>AI agents</span></h1>
+  <p>eBPF-based enforcement that blocks unexpected file access, network calls, and subprocess spawning — before they complete. Zero code changes in the agent.</p>
+  <div class="badges">
+    <span class="badge accent">Linux 5.7+</span>
+    <span class="badge">BPF LSM</span>
+    <span class="badge">Go + C</span>
+    <span class="badge">CO-RE</span>
+    <span class="badge">Real-time UI</span>
+  </div>
+  <div class="cta">
+    <a class="btn btn-primary" href="#install">Install</a>
+    <a class="btn btn-secondary" href="https://github.com/VectorInstitute/vigil">View source</a>
+  </div>
+</div>
+
+<!-- ── How it works ── -->
+<section id="how-it-works">
+  <h2>How it works</h2>
+  <div class="arch"><span class="hi">AI agent</span>  <span class="dim">(claude, gemini, ollama, ...)</span>
+      │ fork / exec / open / connect
+      ▼
+<span class="hi">Linux Kernel</span>  BPF LSM hooks
+<span class="dim">  lsm/file_open</span>       → check blocked_paths map  → <span class="red">-EPERM</span> if denied
+<span class="dim">  lsm/socket_connect</span>  → check blocked_ipv4 map   → <span class="red">-EPERM</span> if denied
+<span class="dim">  lsm/bprm_check</span>      → check blocked_paths map  → <span class="red">-EPERM</span> if denied
+      │ ring buffer events
+      ▼
+<span class="hi">vigil daemon</span>
+  detector    → evaluates against profile  → <span class="grn">ALLOW</span> / <span class="red">BLOCK</span>
+  audit log   → one JSON line per decision
+  web UI      → real-time SSE event feed
+</div>
+  <p style="margin-top:1.5rem">
+    <strong>LSM hooks run synchronously</strong> inside the kernel before the syscall returns — the process never sees a file descriptor, socket, or child PID for a denied resource.
+  </p>
+
+  <div class="grid" style="margin-top:2rem">
+    <div class="card">
+      <div class="card-icon">🔒</div>
+      <h3>Inline enforcement</h3>
+      <p>BPF LSM hooks block at the kernel boundary. Denied syscalls return <code>-EPERM</code> before any user-space code runs.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">🧬</div>
+      <h3>Process lineage</h3>
+      <p>Tracks agent process trees by PID via fork/exec/exit tracepoints. No false positives from unrelated processes sharing the same comm name.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">📡</div>
+      <h3>Real-time UI</h3>
+      <p>SSE-based web dashboard embedded in the binary. Every ALLOW and BLOCK event streams live with timestamps and process context.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">⚡</div>
+      <h3>CO-RE</h3>
+      <p>Compiled once, runs across kernels. BTF-based relocation means one pre-built binary works on Ubuntu 22.04 through the latest kernel.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ── Install ── -->
+<section id="install">
+  <h2>Install</h2>
+
+  <h3>One-liner (recommended)</h3>
+  <pre><code>curl -fsSL https://github.com/VectorInstitute/vigil/releases/latest/download/install.sh | sudo bash</code></pre>
+  <p>Installs the <code>vigil</code> binary and built-in profiles to <code>/usr/local/bin</code> and <code>/usr/lib/vigil/profiles</code>.</p>
+
+  <h3 style="margin-top:1.5rem">Build from source</h3>
+  <pre><code><span class="comment"># Requires: clang, llvm, bpftool, linux-headers, Go 1.22+</span>
+git clone https://github.com/VectorInstitute/vigil
+cd vigil
+make        <span class="comment"># builds BPF + Go binary</span></code></pre>
+
+  <h3 style="margin-top:1.5rem">Enable BPF LSM</h3>
+  <p>Add <code>lsm=bpf</code> to your kernel boot parameters:</p>
+  <pre><code><span class="comment"># /etc/default/grub</span>
+GRUB_CMDLINE_LINUX=<span class="str">"lsm=bpf"</span>
+
+sudo update-grub && sudo reboot</code></pre>
+
+  <h3 style="margin-top:1.5rem">Usage</h3>
+  <pre><code><span class="comment"># Watch an AI agent with the built-in profile</span>
+sudo vigil watch --framework gemini-cli
+
+<span class="comment"># With real-time web UI at http://localhost:7394</span>
+sudo vigil watch --framework claude-code --ui --port 7394
+
+<span class="comment"># Custom profile</span>
+sudo vigil watch --profile /path/to/profile.yaml
+
+<span class="comment"># List built-in profiles</span>
+vigil profile list</code></pre>
+</section>
+
+<!-- ── Process lineage ── -->
+<section id="lineage">
+  <h2>Process lineage tracking</h2>
+  <p>
+    AI agents spawn many child processes — <code>node</code>, <code>sh</code>, <code>python3</code>, <code>git</code> — that share comm names with unrelated system processes. Without lineage tracking, vigil would either miss agent children or flood the event stream with noise from VS Code, SSH daemons, and cron jobs.
+  </p>
+
+  <div class="steps" style="margin:1.5rem 0">
+    <div class="step">
+      <div class="step-body">
+        <h3>entry_comm in profile</h3>
+        <p>Name the agent's root process. For Gemini CLI: <code>entry_comm: gemini</code>. For Claude Code: <code>entry_comm: claude</code>.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-body">
+        <h3>sched_process_exec tracepoint</h3>
+        <p>When a process exec's to <code>entry_comm</code>, its PID is added to the <code>watched_pids</code> BPF hash map.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-body">
+        <h3>sched_process_fork tracepoint</h3>
+        <p>When a watched PID forks, the child PID inherits membership in <code>watched_pids</code> automatically.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-body">
+        <h3>Observation filtered by PID</h3>
+        <p>All syscall tracepoints check <code>watched_pids</code> before emitting an event. Only agent process tree events reach the ring buffer.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-body">
+        <h3>sched_process_exit tracepoint</h3>
+        <p>PIDs are removed from <code>watched_pids</code> on exit, preventing false positives from PID reuse.</p>
+      </div>
+    </div>
+  </div>
+
+  <pre><code><span class="comment"># profiles/gemini-cli.yaml</span>
+<span class="kw">entry_comm</span>: <span class="str">gemini</span>   <span class="comment"># root process to track</span>
+
+<span class="comment"># gemini forks → node; vigil tracks node as part of gemini's tree.
+# VS Code's node is a different PID lineage — completely invisible.</span></code></pre>
+</section>
+
+<!-- ── Profiles ── -->
+<section id="profiles">
+  <h2>Profiles</h2>
+  <p>Profiles define the expected behavioral envelope for an AI workload. Each profile specifies denied paths, allowed networks, allowed subprocesses, and the entry process to track.</p>
+
+  <table style="margin:1.5rem 0">
+    <tr>
+      <th>Profile</th>
+      <th>Entry process</th>
+      <th>Default policy</th>
+      <th>Status</th>
+    </tr>
+    <tr>
+      <td><code>ollama</code></td>
+      <td><code>ollama</code></td>
+      <td>deny</td>
+      <td><span class="pill pill-green">Available</span></td>
+    </tr>
+    <tr>
+      <td><code>claude-code</code></td>
+      <td><code>claude</code></td>
+      <td>allow</td>
+      <td><span class="pill pill-green">Available</span></td>
+    </tr>
+    <tr>
+      <td><code>gemini-cli</code></td>
+      <td><code>gemini</code></td>
+      <td>allow</td>
+      <td><span class="pill pill-green">Available</span></td>
+    </tr>
+    <tr>
+      <td><code>vllm</code></td>
+      <td>—</td>
+      <td>—</td>
+      <td><span class="pill pill-muted">Coming soon</span></td>
+    </tr>
+    <tr>
+      <td><code>llamacpp</code></td>
+      <td>—</td>
+      <td>—</td>
+      <td><span class="pill pill-muted">Coming soon</span></td>
+    </tr>
+  </table>
+
+  <h3>Custom profile</h3>
+  <pre><code><span class="kw">name</span>: my-agent
+<span class="kw">version</span>: <span class="str">"1.0"</span>
+<span class="kw">default_policy</span>: allow
+<span class="kw">entry_comm</span>: my-agent   <span class="comment"># root process comm (max 15 chars)</span>
+
+<span class="kw">denied_paths</span>:
+  - /etc/shadow
+  - /root/.ssh/**
+  - /**/.aws/credentials
+
+<span class="kw">allowed_networks</span>:
+  - 127.0.0.0/8
+  - ::1/128
+  - 0.0.0.0/0   <span class="comment"># or restrict to specific CIDRs</span>
+
+<span class="kw">allowed_commands</span>:
+  - my-agent
+  - node
+  - git</code></pre>
+</section>
+
+<!-- ── Footer ── -->
+<footer>
+  <p>vigil is open source under the Apache 2.0 license.</p>
+  <p style="margin-top:.5rem">
+    <a href="https://github.com/VectorInstitute/vigil">GitHub</a> ·
+    <a href="https://github.com/VectorInstitute/vigil/releases">Releases</a> ·
+    <a href="architecture.html">Architecture</a>
+  </p>
+</footer>
+
+</body>
+</html>
