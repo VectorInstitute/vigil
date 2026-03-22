@@ -16,6 +16,9 @@ watched_comms:
   - node
 
 denied_paths:
+  # Demo: block a fake secret file (safe to test without model safety refusals)
+  - /tmp/secret.txt
+
   # Credential files
   - /etc/shadow
   - /etc/sudoers

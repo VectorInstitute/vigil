@@ -36,10 +36,6 @@ struct {
 } blocked_ipv4 SEC(".maps");
 
 // Per-cpu scratch buffer for normalising the bpf_d_path result.
-// bpf_d_path writes the string at the END of the on-stack buffer then
-// memmoves it to the front, leaving a copy of the string in the tail.
-// Using a second on-stack 256-byte buffer would exceed the 512-byte BPF
-// stack limit, so we keep the scratch buffer in a per-cpu map instead.
 struct {
     __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
     __uint(max_entries, 1);
@@ -47,24 +43,49 @@ struct {
     __type(value, char[MAX_PATH_LEN]);
 } path_scratch SEC(".maps");
 
+// watched_pids: shared with probe.c — only enforce against agent process tree.
+struct {
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __uint(max_entries, 4096);
+    __type(key,   __u32);
+    __type(value, __u8);
+} watched_pids __weak SEC(".maps");
+
+// entry_comm: shared with probe.c — detect when lineage filtering is active.
+struct {
+    __uint(type, BPF_MAP_TYPE_ARRAY);
+    __uint(max_entries, 1);
+    __type(key,   __u32);
+    __type(value, char[MAX_COMM_LEN]);
+} entry_comm __weak SEC(".maps");
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+// pid_is_watched mirrors the same helper in probe.c.
+// When entry_comm is unconfigured (first byte '\0'), all PIDs pass — meaning
+// enforcement applies to every process (safe default when no lineage data).
+// When entry_comm is set, only PIDs in watched_pids are enforced — so vigil
+// only blocks the agent's own process tree, leaving sudo, sshd, etc. alone.
+static __always_inline int pid_is_watched(__u32 pid) {
+    __u32 z = 0;
+    char *entry = bpf_map_lookup_elem(&entry_comm, &z);
+    if (!entry || entry[0] == '\0')
+        return 1; // no lineage configured — enforce all (safe default)
+    return bpf_map_lookup_elem(&watched_pids, &pid) != NULL;
+}
+
 // ── LSM: file_open ────────────────────────────────────────────────────────────
 
-// Runs before every file open. Returns -EPERM to deny.
-// bpf_d_path requires a pointer into kernel memory (not a stack copy),
-// so pass &file->f_path directly rather than a BPF_CORE_READ copy.
 SEC("lsm/file_open")
 int BPF_PROG(vigil_file_open, struct file *file) {
+    __u32 pid = bpf_get_current_pid_tgid() >> 32;
+    if (!pid_is_watched(pid))
+        return 0;
+
     char path[MAX_PATH_LEN] = {};
     if (bpf_d_path(&file->f_path, path, sizeof(path)) <= 0)
         return 0;
 
-    // bpf_d_path internally builds the string at the END of path[] then
-    // memmoves it to the front, leaving a copy of the string in the tail.
-    // bpf_probe_read_kernel_str silently fails on BPF stack addresses,
-    // zeroing the destination and causing every map lookup to miss.
-    // Instead: pre-zero the per-cpu scratch buffer and copy byte-by-byte
-    // until '\0' so positions after the null stay zero — giving a clean
-    // 256-byte key that matches what populateMaps stored.
     __u32 z = 0;
     char *key = bpf_map_lookup_elem(&path_scratch, &z);
     if (!key)
@@ -88,7 +109,7 @@ int BPF_PROG(vigil_file_open, struct file *file) {
     e->timestamp_ns = bpf_ktime_get_ns();
     e->event_type   = EVENT_FILE_OPEN;
     e->action       = ACTION_BLOCK;
-    e->pid          = bpf_get_current_pid_tgid() >> 32;
+    e->pid          = pid;
     e->tgid         = (__u32)bpf_get_current_pid_tgid();
     bpf_get_current_comm(&e->comm, sizeof(e->comm));
     __builtin_memcpy(e->path, key, MAX_PATH_LEN);
@@ -99,11 +120,14 @@ int BPF_PROG(vigil_file_open, struct file *file) {
 
 // ── LSM: socket_connect ───────────────────────────────────────────────────────
 
-// Runs before every connect(). Returns -EPERM to deny.
 SEC("lsm/socket_connect")
 int BPF_PROG(vigil_socket_connect, struct socket *sock, struct sockaddr *address, int addrlen) {
+    __u32 pid = bpf_get_current_pid_tgid() >> 32;
+    if (!pid_is_watched(pid))
+        return 0;
+
     if (address->sa_family != AF_INET)
-        return 0; // only IPv4 blocking in MVP
+        return 0;
 
     struct sockaddr_in *sin = (struct sockaddr_in *)address;
     __u32 dest_ip = BPF_CORE_READ(sin, sin_addr.s_addr);
@@ -119,7 +143,7 @@ int BPF_PROG(vigil_socket_connect, struct socket *sock, struct sockaddr *address
     e->timestamp_ns = bpf_ktime_get_ns();
     e->event_type   = EVENT_NET_CONNECT;
     e->action       = ACTION_BLOCK;
-    e->pid          = bpf_get_current_pid_tgid() >> 32;
+    e->pid          = pid;
     e->tgid         = (__u32)bpf_get_current_pid_tgid();
     e->dest_ip4     = dest_ip;
     e->dest_port    = bpf_ntohs(BPF_CORE_READ(sin, sin_port));
@@ -131,18 +155,16 @@ int BPF_PROG(vigil_socket_connect, struct socket *sock, struct sockaddr *address
 
 // ── LSM: bprm_check_security ─────────────────────────────────────────────────
 
-// Runs before every exec. Returns -EPERM to deny.
-// Chain trusted pointer dereferences directly (bprm → file → f_path) so the
-// BPF verifier tracks the full chain as trusted_ptr_.  BPF_CORE_READ would
-// materialise the pointer via bpf_probe_read_kernel, producing a scalar and
-// failing the bpf_d_path type check.
 SEC("lsm/bprm_check_security")
 int BPF_PROG(vigil_bprm_check, struct linux_binprm *bprm) {
+    __u32 pid = bpf_get_current_pid_tgid() >> 32;
+    if (!pid_is_watched(pid))
+        return 0;
+
     char path[MAX_PATH_LEN] = {};
     if (bpf_d_path(&bprm->file->f_path, path, sizeof(path)) <= 0)
         return 0;
 
-    // Same tail-cleanup as vigil_file_open: pre-zero scratch, copy until '\0'.
     __u32 z = 0;
     char *key = bpf_map_lookup_elem(&path_scratch, &z);
     if (!key)
@@ -166,7 +188,7 @@ int BPF_PROG(vigil_bprm_check, struct linux_binprm *bprm) {
     e->timestamp_ns = bpf_ktime_get_ns();
     e->event_type   = EVENT_EXEC;
     e->action       = ACTION_BLOCK;
-    e->pid          = bpf_get_current_pid_tgid() >> 32;
+    e->pid          = pid;
     e->tgid         = (__u32)bpf_get_current_pid_tgid();
     bpf_get_current_comm(&e->comm, sizeof(e->comm));
     __builtin_memcpy(e->path, key, MAX_PATH_LEN);

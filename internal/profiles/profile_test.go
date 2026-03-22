@@ -211,6 +211,26 @@ entry_comm: gemini
 	assert.Equal(t, "gemini", p.EntryComm)
 }
 
+func TestEntryComm_ScopesLSMEnforcement(t *testing.T) {
+	// When entry_comm is set, BPF LSM hooks check watched_pids before blocking.
+	// This ensures enforcement is scoped to the agent's process tree only —
+	// system processes (sudo, sshd, cron) are never blocked even if their
+	// file access matches a denied_paths rule.
+	//
+	// This is verified at the profile level by confirming entry_comm is set
+	// in all agent profiles. The BPF pid_is_watched() guard in lsm.c enforces it.
+	agentProfiles := []string{
+		"../../profiles/gemini-cli.yaml",
+		"../../profiles/claude-code.yaml",
+	}
+	for _, path := range agentProfiles {
+		p, err := profiles.LoadFile(path)
+		require.NoError(t, err, path)
+		assert.NotEmpty(t, p.EntryComm,
+			"%s: entry_comm must be set so LSM enforcement is scoped to the agent process tree", path)
+	}
+}
+
 // ── Command matching ─────────────────────────────────────────────────────────
 
 func TestMatchCommand_AllowedRunners(t *testing.T) {
