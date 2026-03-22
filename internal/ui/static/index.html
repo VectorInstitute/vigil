@@ -81,6 +81,16 @@
       letter-spacing: 0.5px;
     }
 
+    .version-badge {
+      background: var(--raised);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 2px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      letter-spacing: 0.5px;
+    }
+
     .stats {
       margin-left: auto;
       display: flex;
@@ -325,6 +335,7 @@
     vigil
   </div>
   <div class="profile-badge" id="profileBadge">loading…</div>
+  <div class="version-badge" id="versionBadge"></div>
   <div class="stats">
     <div class="stat"><span class="stat-value total" id="statTotal">0</span><span class="stat-label">total</span></div>
     <div class="stat"><span class="stat-value blocks" id="statBlocked">0</span><span class="stat-label">blocked</span></div>
@@ -382,7 +393,8 @@
 
   // ── DOM refs ───────────────────────────────────────────────────────────────
   const liveDot     = document.getElementById('liveDot');
-  const profileBadge = document.getElementById('profileBadge');
+  const profileBadge  = document.getElementById('profileBadge');
+  const versionBadge  = document.getElementById('versionBadge');
   const connDot     = document.getElementById('connDot');
   const connLabel   = document.getElementById('connLabel');
   const statTotal   = document.getElementById('statTotal');
@@ -563,6 +575,7 @@
       const r = await fetch(new URL('api/status', base).href);
       const d = await r.json();
       profileBadge.textContent = d.profile || 'unknown';
+      if (d.version) versionBadge.textContent = d.version;
     } catch (_) {
       profileBadge.textContent = 'unknown';
     }

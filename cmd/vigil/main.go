@@ -13,6 +13,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// version is set at build time via -ldflags "-X main.version=vX.Y.Z".
+var version = "dev"
+
 var rootCmd = &cobra.Command{
 	Use:   "vigil",
 	Short: "eBPF-based runtime security for AI inference workloads",
@@ -67,7 +70,7 @@ func runWatch(cmd *cobra.Command, _ []string) error {
 
 	var uiServer *ui.Server
 	if watchFlags.uiEnabled {
-		uiServer = ui.New(p.Name)
+		uiServer = ui.New(p.Name, version)
 		go func() {
 			addr := fmt.Sprintf(":%d", watchFlags.uiPort)
 			fmt.Fprintf(cmd.OutOrStdout(), "vigil: UI available at http://localhost%s\n", addr)

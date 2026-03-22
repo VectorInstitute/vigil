@@ -70,12 +70,12 @@ func connectSSE(t *testing.T, url string) (*bufio.Scanner, context.CancelFunc) {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 func TestNew(t *testing.T) {
-	s := ui.New("claude-code")
+	s := ui.New("claude-code", "v0.1.4")
 	require.NotNil(t, s)
 }
 
 func TestHandler_servesIndexHTML(t *testing.T) {
-	s := ui.New("test")
+	s := ui.New("test", "dev")
 	ts := httptest.NewServer(s.Handler())
 	defer ts.Close()
 
@@ -88,7 +88,7 @@ func TestHandler_servesIndexHTML(t *testing.T) {
 }
 
 func TestHandler_statusEndpoint(t *testing.T) {
-	s := ui.New("claude-code")
+	s := ui.New("claude-code", "v0.1.4")
 	ts := httptest.NewServer(s.Handler())
 	defer ts.Close()
 
@@ -101,11 +101,12 @@ func TestHandler_statusEndpoint(t *testing.T) {
 	var body map[string]string
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
 	assert.Equal(t, "claude-code", body["profile"])
+	assert.Equal(t, "v0.1.4", body["version"])
 	assert.Equal(t, "running", body["status"])
 }
 
 func TestHandler_eventsSSEHeaders(t *testing.T) {
-	s := ui.New("test")
+	s := ui.New("test", "dev")
 	ts := httptest.NewServer(s.Handler())
 	defer ts.Close()
 
@@ -125,7 +126,7 @@ func TestHandler_eventsSSEHeaders(t *testing.T) {
 }
 
 func TestBroadcast_singleClientReceivesEvent(t *testing.T) {
-	s := ui.New("test")
+	s := ui.New("test", "dev")
 	ts := httptest.NewServer(s.Handler())
 	defer ts.Close()
 
@@ -153,7 +154,7 @@ func TestBroadcast_singleClientReceivesEvent(t *testing.T) {
 }
 
 func TestBroadcast_multipleClientsAllReceive(t *testing.T) {
-	s := ui.New("test")
+	s := ui.New("test", "dev")
 	ts := httptest.NewServer(s.Handler())
 	defer ts.Close()
 
@@ -180,14 +181,14 @@ func TestBroadcast_multipleClientsAllReceive(t *testing.T) {
 }
 
 func TestBroadcast_noClientsDoesNotPanic(t *testing.T) {
-	s := ui.New("test")
+	s := ui.New("test", "dev")
 	dec := makeDecision(events.FileOpen, "/tmp/foo", detector.Allow)
 	// Should not panic with zero connected clients.
 	require.NotPanics(t, func() { s.Broadcast(dec) })
 }
 
 func TestBroadcast_slowClientDropsEventsNotBlocking(t *testing.T) {
-	s := ui.New("test")
+	s := ui.New("test", "dev")
 
 	// Manually use a recorder to simulate a subscribed but unread client.
 	// We exploit the exported Subscribe method by calling Broadcast many
@@ -202,7 +203,7 @@ func TestBroadcast_slowClientDropsEventsNotBlocking(t *testing.T) {
 }
 
 func TestBroadcast_clientDisconnectIsCleanedUp(t *testing.T) {
-	s := ui.New("test")
+	s := ui.New("test", "dev")
 	ts := httptest.NewServer(s.Handler())
 	defer ts.Close()
 
@@ -231,7 +232,7 @@ func TestBroadcast_clientDisconnectIsCleanedUp(t *testing.T) {
 }
 
 func TestBroadcast_netConnectEvent(t *testing.T) {
-	s := ui.New("test")
+	s := ui.New("test", "dev")
 	ts := httptest.NewServer(s.Handler())
 	defer ts.Close()
 

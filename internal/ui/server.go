@@ -22,14 +22,16 @@ var staticFiles embed.FS
 // embedded single-page UI.
 type Server struct {
 	profileName string
+	version     string
 	mu          sync.Mutex
 	clients     map[chan []byte]struct{}
 }
 
-// New returns a Server configured for the given profile name.
-func New(profileName string) *Server {
+// New returns a Server configured for the given profile name and build version.
+func New(profileName, version string) *Server {
 	return &Server{
 		profileName: profileName,
+		version:     version,
 		clients:     make(map[chan []byte]struct{}),
 	}
 }
@@ -119,6 +121,7 @@ func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{
 		"profile": s.profileName,
+		"version": s.version,
 		"status":  "running",
 	})
 }
