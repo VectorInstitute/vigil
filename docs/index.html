@@ -190,6 +190,20 @@
     .pill-green { background: #1a3327; color: var(--green); }
     .pill-muted { background: var(--surface); color: var(--muted); border: 1px solid var(--border); }
 
+    /* ── Copy button ── */
+    .copy-wrap { position: relative; }
+    .copy-wrap pre { padding-right: 3.5rem; }
+    .copy-btn {
+      position: absolute; top: .6rem; right: .6rem;
+      background: var(--border); border: none; border-radius: 6px;
+      padding: .3rem .55rem; cursor: pointer;
+      color: var(--muted); transition: background .15s, color .15s;
+      display: flex; align-items: center; gap: .3rem;
+      font-size: .75rem; font-family: var(--mono);
+    }
+    .copy-btn:hover { background: var(--accent); color: #000; }
+    .copy-btn.copied { background: var(--green); color: #000; }
+
     /* ── Footer ── */
     footer {
       border-top: 1px solid var(--border);
@@ -283,7 +297,13 @@
   <h2>Install</h2>
 
   <h3>One-liner (recommended)</h3>
-  <pre><code>curl -fsSL https://github.com/VectorInstitute/vigil/releases/latest/download/install.sh | sudo bash</code></pre>
+  <div class="copy-wrap">
+    <pre><code id="install-cmd">curl -fsSL https://github.com/VectorInstitute/vigil/releases/latest/download/install.sh | sudo bash</code></pre>
+    <button class="copy-btn" onclick="copyInstall(this)" title="Copy to clipboard">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/></svg>
+      Copy
+    </button>
+  </div>
   <p>Installs the <code>vigil</code> binary and built-in profiles to <code>/usr/local/bin</code> and <code>/usr/lib/vigil/profiles</code>.</p>
 
   <h3 style="margin-top:1.5rem">Build from source</h3>
@@ -436,5 +456,18 @@ vigil profile list</code></pre>
   </p>
 </footer>
 
+<script>
+  function copyInstall(btn) {
+    const text = document.getElementById('install-cmd').textContent;
+    navigator.clipboard.writeText(text).then(() => {
+      btn.classList.add('copied');
+      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg> Copied!';
+      setTimeout(() => {
+        btn.classList.remove('copied');
+        btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/></svg> Copy';
+      }, 2000);
+    });
+  }
+</script>
 </body>
 </html>
