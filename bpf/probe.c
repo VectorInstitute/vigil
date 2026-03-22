@@ -274,7 +274,7 @@ int uprobe_ssl_write(struct pt_regs *ctx) {
     struct ssl_event *e = bpf_ringbuf_reserve(&ssl_events, sizeof(*e), 0);
     if (!e)
         return 0;
-    __builtin_memset(e, 0, sizeof(*e));
+    e->_pad[0] = e->_pad[1] = e->_pad[2] = 0;
     e->timestamp_ns = bpf_ktime_get_ns();
     e->pid       = pid;
     e->tgid      = (__u32)id;
@@ -331,7 +331,7 @@ int uretprobe_ssl_read(struct pt_regs *ctx) {
     struct ssl_event *e = bpf_ringbuf_reserve(&ssl_events, sizeof(*e), 0);
     if (!e)
         return 0;
-    __builtin_memset(e, 0, sizeof(*e));
+    e->_pad[0] = e->_pad[1] = e->_pad[2] = 0;
     e->timestamp_ns = bpf_ktime_get_ns();
     e->pid       = pid;
     e->tgid      = (__u32)id;
