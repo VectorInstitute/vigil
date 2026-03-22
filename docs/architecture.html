@@ -97,6 +97,11 @@
       color: #c9d1d9;
     }
 
+    .workload-pill.coming-soon {
+      color: #484f58;
+      border-style: dashed;
+    }
+
     /* ── Arrows ── */
     .arrow-container {
       display: flex;
@@ -226,6 +231,29 @@
       color: #8b949e;
     }
 
+    .lineage-row {
+      margin-top: 10px;
+      background: #161b22;
+      border: 1px solid #1f4068;
+      border-radius: 8px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .lineage-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #58a6ff;
+      white-space: nowrap;
+    }
+
+    .lineage-desc {
+      font-size: 11px;
+      color: #8b949e;
+    }
+
     /* ── User space layer ── */
     .layer-userspace {
       background: #0f1a12;
@@ -246,7 +274,7 @@
 
     .daemon-grid {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(5, 1fr);
       gap: 10px;
     }
 
@@ -305,10 +333,17 @@
       color: #56d364;
     }
 
+    .profile-pill.coming-soon {
+      background: #161b22;
+      border-style: dashed;
+      border-color: #1a4a2e;
+      color: #484f58;
+    }
+
     /* ── Output row ── */
     .output-row {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr 1fr 1fr;
       gap: 10px;
     }
 
@@ -489,10 +524,10 @@
   <div class="layer-ai">
     <div class="workloads">
       <div class="workload-pill">Ollama</div>
-      <div class="workload-pill">vLLM</div>
-      <div class="workload-pill">llama.cpp</div>
-      <div class="workload-pill">LiteLLM</div>
-      <div class="workload-pill">FastAPI + HF Transformers</div>
+      <div class="workload-pill">Gemini CLI</div>
+      <div class="workload-pill">Claude Code</div>
+      <div class="workload-pill coming-soon">vLLM (coming soon)</div>
+      <div class="workload-pill coming-soon">llama.cpp (coming soon)</div>
     </div>
   </div>
 
@@ -511,16 +546,15 @@
   <!-- ── Layer 1: Kernel ── -->
   <div class="layer-label">Linux Kernel</div>
   <div class="layer-kernel">
-    <div class="layer-kernel-title">eBPF Programs (compiled C, embedded in binary)</div>
+    <div class="layer-kernel-title">eBPF Programs (compiled C — bpf/probe.c + bpf/lsm.c)</div>
 
     <div class="kernel-row">
       <div class="kernel-box">
-        <h3>Syscall Probes</h3>
+        <h3>Syscall Tracepoints</h3>
         <ul>
           <li>openat — file access</li>
           <li>connect — outbound net</li>
           <li>execve — process spawn</li>
-          <li>mmap — memory maps</li>
         </ul>
       </div>
 
@@ -531,17 +565,22 @@
       <div class="kernel-box" style="border-color: #5a1d1d;">
         <h3 style="color: #f85149;">LSM Hooks</h3>
         <ul>
-          <li style="color: #8b949e;">security_file_open</li>
-          <li style="color: #8b949e;">security_socket_connect</li>
-          <li style="color: #8b949e;">security_bprm_check</li>
-          <li style="color: #f85149; font-weight:600;">→ BLOCK inline</li>
+          <li style="color: #8b949e;">lsm/file_open</li>
+          <li style="color: #8b949e;">lsm/socket_connect</li>
+          <li style="color: #8b949e;">lsm/bprm_check_security</li>
+          <li style="color: #f85149; font-weight:600;">→ BLOCK inline (-EPERM)</li>
         </ul>
       </div>
     </div>
 
+    <div class="lineage-row">
+      <div class="lineage-label">Process Lineage</div>
+      <div class="lineage-desc">trace_exec_lineage seeds watched_pids on entry_comm start · trace_fork_lineage propagates to children · trace_exit_lineage cleans up · only agent process tree emits events</div>
+    </div>
+
     <div class="ring-buffer">
       <div class="ring-buffer-label">Ring Buffer</div>
-      <div class="ring-buffer-desc">lock-free kernel→userspace event stream · ~zero overhead · structured event records</div>
+      <div class="ring-buffer-desc">lock-free kernel→userspace event stream · 16 MB · structured event records (FileOpen / NetConnect / Exec)</div>
     </div>
   </div>
 
@@ -560,44 +599,48 @@
   <!-- ── Layer 2: User-space ── -->
   <div class="layer-label">User-space Go Daemon</div>
   <div class="layer-userspace">
-    <div class="layer-userspace-title">vigil daemon — single static binary</div>
+    <div class="layer-userspace-title">vigil daemon — single static binary (cilium/ebpf, no CGo)</div>
 
     <div class="daemon-grid">
       <div class="daemon-box">
-        <h3>Process Detector</h3>
-        <p>Finds AI serving processes by name/cmdline. Auto-attaches eBPF probes on discovery.</p>
+        <h3>loader</h3>
+        <p>Loads eBPF .o, attaches tracepoints + LSM hooks, populates BPF maps from profile, seeds watched_pids from /proc, reads ring buffer.</p>
       </div>
       <div class="daemon-box">
-        <h3>Event Processor</h3>
-        <p>Consumes ring buffer. Parses and enriches events with PID, container ID, timestamp.</p>
+        <h3>profiles</h3>
+        <p>YAML loader. Glob path matching (doublestar), CIDR network matching. Fields: denied_paths, allowed_paths, allowed_networks, entry_comm.</p>
       </div>
       <div class="daemon-box">
-        <h3>Anomaly Detector</h3>
-        <p>Compares events against loaded profile. Flags deviations above threshold.</p>
+        <h3>detector</h3>
+        <p>Evaluates each Event against Profile. Returns Decision{Action, Reason}. Actions: Allow / Block / Skip.</p>
       </div>
       <div class="daemon-box">
-        <h3>Policy Enforcer</h3>
-        <p>Writes block decisions to eBPF map. LSM hook reads map synchronously to deny syscall.</p>
+        <h3>audit</h3>
+        <p>Writes one JSON line per Decision to io.Writer (stdout / file / syslog). SIEM-ready structured log.</p>
+      </div>
+      <div class="daemon-box">
+        <h3>ui</h3>
+        <p>HTTP server (default :7394). Serves embedded SPA. SSE /events stream. /api/status. Enabled with --ui flag.</p>
       </div>
     </div>
 
     <div class="profiles-row">
-      <div class="profiles-label">Profile Store</div>
+      <div class="profiles-label">Profiles</div>
       <div class="profile-pills">
         <div class="profile-pill">ollama.yaml</div>
-        <div class="profile-pill">vllm.yaml</div>
-        <div class="profile-pill">llamacpp.yaml</div>
-        <div class="profile-pill">litellm.yaml</div>
-        <div class="profile-pill">custom.yaml</div>
+        <div class="profile-pill">gemini-cli.yaml</div>
+        <div class="profile-pill">claude-code.yaml</div>
+        <div class="profile-pill coming-soon">vllm.yaml</div>
+        <div class="profile-pill coming-soon">llamacpp.yaml</div>
       </div>
-      <div style="font-size:10px; color:#8b949e; margin-left:auto; white-space:nowrap;">embedded in binary · overridable</div>
+      <div style="font-size:10px; color:#8b949e; margin-left:auto; white-space:nowrap;">overridable with --profile</div>
     </div>
   </div>
 
   <!-- separator -->
   <div class="flow-separator">
     <div class="sep-arrow">
-      <div class="sa-label">JSON audit log</div>
+      <div class="sa-label">JSON audit log / SSE</div>
       <div class="sa-line down"></div>
     </div>
     <div class="sep-arrow">
@@ -612,14 +655,19 @@
     <div class="output-box">
       <h3>Audit Logger</h3>
       <p>Structured JSON to stdout, file, or syslog. Plug into any SIEM (Splunk, Elastic, Datadog).</p>
-      <div style="margin-top:8px; font-size:10px; color:#484f58;">{"ts":"...","pid":1234,"event":"connect","dst":"1.2.3.4","action":"BLOCKED","framework":"ollama"}</div>
+      <div style="margin-top:8px; font-size:10px; color:#484f58;">{"ts":"...","pid":1234,"comm":"ollama","event":"net_connect","action":"BLOCK","reason":"..."}</div>
+    </div>
+    <div class="output-box">
+      <h3>Web UI</h3>
+      <p>Real-time event table via SSE. ALLOW/BLOCK badges. Filter by action + event type. Connection status. Served at localhost:7394.</p>
     </div>
     <div class="output-box">
       <h3>CLI</h3>
       <div class="cli-cmds">
-        <span class="cli-cmd">vigil watch [--framework ollama]</span>
-        <span class="cli-cmd">vigil audit [--tail]</span>
-        <span class="cli-cmd">vigil profile list | show &lt;name&gt;</span>
+        <span class="cli-cmd">vigil watch [--framework F]</span>
+        <span class="cli-cmd">vigil watch --ui [--port N]</span>
+        <span class="cli-cmd">vigil watch --profile path.yaml</span>
+        <span class="cli-cmd">vigil profile list</span>
       </div>
     </div>
   </div>
