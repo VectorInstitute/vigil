@@ -111,10 +111,15 @@ int trace_exec_lineage(void *ctx) {
 
 // trace_fork_lineage: fires when a process forks.
 // If the parent is in watched_pids, add the child too (inherit membership).
+//
+// Important: ctx->parent_pid is the TID of the thread that called fork/clone,
+// which differs from the TGID for multi-threaded processes (e.g. Node.js worker
+// threads). watched_pids stores TGIDs, so we use bpf_get_current_pid_tgid()>>32
+// to get the parent TGID regardless of which thread triggered the fork.
 SEC("tracepoint/sched/sched_process_fork")
 int trace_fork_lineage(struct trace_event_raw_sched_process_fork *ctx) {
-    __u32 parent_pid = ctx->parent_pid;
-    __u8 *watched = bpf_map_lookup_elem(&watched_pids, &parent_pid);
+    __u32 parent_tgid = bpf_get_current_pid_tgid() >> 32;
+    __u8 *watched = bpf_map_lookup_elem(&watched_pids, &parent_tgid);
     if (!watched)
         return 0; // parent not watched — child inherits nothing
 
