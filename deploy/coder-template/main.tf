@@ -84,11 +84,9 @@ resource "coder_agent" "main" {
     if ! grep -q "auto-cd vigil" "/home/${local.username}/.bashrc" 2>/dev/null; then
       cat >> "/home/${local.username}/.bashrc" <<'BASHRC'
 
-# auto-cd vigil
-cd ~/vigil 2>/dev/null || true
-echo ""
-echo "  vigil demo workspace — run: sudo ./demo/run_demo.sh"
-echo ""
+# auto-cd vigil (interactive only — keeps coder stat output clean)
+[[ $- == *i* ]] && cd ~/vigil 2>/dev/null || true
+[[ $- == *i* ]] && echo "" && echo "  vigil demo workspace — run: sudo ./demo/run_demo.sh" && echo ""
 BASHRC
     fi
 
