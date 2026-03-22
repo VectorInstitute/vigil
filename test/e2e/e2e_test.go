@@ -63,7 +63,7 @@ func TestJailbreakEscape(t *testing.T) {
 	p, err := profiles.LoadFile(profilePath)
 	require.NoError(t, err)
 
-	l, err := loader.Load(p, bpfObjPath)
+	l, err := loader.Load(p, bpfObjPath, "")
 	require.NoError(t, err, "loader.Load: ensure kernel has CONFIG_BPF_LSM=y and lsm=bpf")
 	defer l.Close()
 
@@ -132,7 +132,7 @@ func TestAllowedOperationsUnblocked(t *testing.T) {
 	p, err := profiles.LoadFile(profilePath)
 	require.NoError(t, err)
 
-	l, err := loader.Load(p, bpfObjPath)
+	l, err := loader.Load(p, bpfObjPath, "")
 	require.NoError(t, err)
 	defer l.Close()
 
