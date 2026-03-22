@@ -28,7 +28,7 @@ func TestDecodeEvent_timestampUsesWallClock(t *testing.T) {
 	raw := make([]byte, 320)
 
 	// Simulate a BPF event that fired 5 seconds after boot.
-	const fiveSecondsNs = uint64(5 * time.Second)
+	fiveSecondsNs := uint64(5 * time.Second)
 	raw[0] = byte(fiveSecondsNs)
 	raw[1] = byte(fiveSecondsNs >> 8)
 	raw[2] = byte(fiveSecondsNs >> 16)
